@@ -4,5 +4,7 @@ export interface SalesTerritory {
   cumNhoPhuTrach: string[];
   saleBackup: string;
   ngayDiUuTien: string[];
+  minVisitsPerDay: number;
+  maxVisitsPerDay: number;
   ghiChu: string;
 }

@@ -19,10 +19,12 @@ import {
 } from "@/lib/route-execution";
 import { generateMonthlyRoutePlan, getOverloadedClusters } from "@/lib/route-logic";
 import { clusters, saleOwners, seedOutlets } from "@/lib/seed-data";
+import { getSaleLimits, loadSalesConfig } from "@/lib/sales-config";
 import { loadPlannerSettings } from "@/lib/settings-storage";
 import type { Frequency } from "@/types/outlet";
 import type { PlannerSettings, RouteExecutionRecord, RouteVisit, VisitStatus, WeekKey } from "@/types/route";
 import { DEFAULT_SETTINGS } from "@/lib/route-logic";
+import type { SalesTerritory } from "@/types/territory";
 
 type QuickRouteFilter = "all" | "carryover" | "missed" | "missed-priority";
 
@@ -41,11 +43,13 @@ export default function PlannerPage() {
   const [quickFilter, setQuickFilter] = useState<QuickRouteFilter>("all");
   const [records, setRecords] = useState<RouteExecutionRecord[]>([]);
   const [settings, setSettings] = useState<PlannerSettings>(DEFAULT_SETTINGS);
+  const [salesConfig, setSalesConfig] = useState<SalesTerritory[]>([]);
 
   useEffect(() => {
     const raw = window.localStorage.getItem(EXECUTION_STORAGE_KEY);
     if (raw) setRecords(JSON.parse(raw) as RouteExecutionRecord[]);
     setSettings(loadPlannerSettings());
+    setSalesConfig(loadSalesConfig());
   }, []);
 
   useEffect(() => {
@@ -101,7 +105,7 @@ export default function PlannerPage() {
     if (filter === "all") return true;
     if (filter === "carryover") return Boolean(visit.isCarryover);
     if (filter === "missed") return isMissedVisit(visit.status);
-    if (filter === "missed-priority") return ["F4", "F2"].includes(visit.frequency) && isMissedVisit(visit.status);
+    if (filter === "missed-priority") return ["F8", "F4", "F2"].includes(visit.frequency) && isMissedVisit(visit.status);
     return true;
   }
 
@@ -120,13 +124,17 @@ export default function PlannerPage() {
     }
 
     return [...grouped.values()]
-      .filter((item) => item.visits < plannerSettings.minVisitsPerSaleDay || item.visits > plannerSettings.maxVisitsPerSaleDay)
+      .filter((item) => {
+        const limits = getSaleLimits(salesConfig, item.sale, plannerSettings.minVisitsPerSaleDay, plannerSettings.maxVisitsPerSaleDay);
+        return item.visits < limits.min || item.visits > limits.max;
+      })
       .sort((a, b) => b.visits - a.visits)
-      .map((item) =>
-        item.visits > plannerSettings.maxVisitsPerSaleDay
-          ? `${item.week} ${item.dayName} - ${item.sale}: ${item.visits} điểm, vượt max ${plannerSettings.maxVisitsPerSaleDay}.`
-          : `${item.week} ${item.dayName} - ${item.sale}: ${item.visits} điểm, dưới min ${plannerSettings.minVisitsPerSaleDay}.`,
-      );
+      .map((item) => {
+        const limits = getSaleLimits(salesConfig, item.sale, plannerSettings.minVisitsPerSaleDay, plannerSettings.maxVisitsPerSaleDay);
+        return item.visits > limits.max
+          ? `${item.week} ${item.dayName} - ${item.sale}: ${item.visits} điểm, vượt max riêng ${limits.max}.`
+          : `${item.week} ${item.dayName} - ${item.sale}: ${item.visits} điểm, dưới min riêng ${limits.min}.`;
+      });
   }
 
   const tableColumns: Column<RouteVisit>[] = [
@@ -280,8 +288,8 @@ export default function PlannerPage() {
         <MetricCard label="Sẽ bù từ tháng trước" value={carryovers.length} hint={`${previousPeriod.month}/${previousPeriod.year}`} />
       </div>
       <div className="mb-4 rounded-lg border border-line bg-white p-4 text-sm text-muted shadow-soft">
-        Ràng buộc sale/ngày hiện tại: tối thiểu <span className="font-bold text-ink">{settings.minVisitsPerSaleDay}</span> điểm, tối đa{" "}
-        <span className="font-bold text-ink">{settings.maxVisitsPerSaleDay}</span> điểm. Có thể chỉnh trong màn Cài đặt.
+        Ràng buộc sale/ngày mặc định: tối thiểu <span className="font-bold text-ink">{settings.minVisitsPerSaleDay}</span> điểm, tối đa{" "}
+        <span className="font-bold text-ink">{settings.maxVisitsPerSaleDay}</span> điểm. Min/max riêng từng sale chỉnh ở màn Phân vùng sale.
       </div>
 
       <div className="mb-4 grid gap-3 rounded-lg border border-line bg-white p-4 shadow-soft md:grid-cols-3 xl:grid-cols-7">
@@ -317,10 +325,12 @@ export default function PlannerPage() {
         </select>
         <select className="h-10 rounded-md border border-line px-3 text-sm" value={frequency} onChange={(event) => setFrequency(event.target.value as "all" | Frequency)}>
           <option value="all">Tất cả F</option>
+          <option value="F8">F8</option>
           <option value="F4">F4</option>
           <option value="F2">F2</option>
           <option value="F1">F1</option>
           <option value="F0.5">F0.5</option>
+          <option value="F0.3">F0.3</option>
         </select>
         <select className="h-10 rounded-md border border-line px-3 text-sm" value={status} onChange={(event) => setStatus(event.target.value as "all" | VisitStatus)}>
           <option value="all">Tất cả trạng thái</option>
@@ -334,7 +344,7 @@ export default function PlannerPage() {
           <option value="all">Tất cả tuyến</option>
           <option value="carryover">Chỉ tuyến bù</option>
           <option value="missed">Chỉ tuyến thiếu</option>
-          <option value="missed-priority">F4/F2 bị miss</option>
+          <option value="missed-priority">F8/F4/F2 bị miss</option>
         </select>
       </div>
 
@@ -355,8 +365,8 @@ export default function PlannerPage() {
         <div className="rounded-lg border border-line bg-white p-4 shadow-soft">
           <div className="mb-3 font-bold">Quy tắc bù tuyến</div>
           <div className="grid gap-2 text-sm text-muted">
-            <div>F4/F2 chưa hoàn tất sẽ được ưu tiên bù trong W1-W2 tháng sau nếu cụm còn capacity.</div>
-            <div>F1 chưa hoàn tất được bù vào W2-W3 cùng cụm. F0.5 không bắt buộc bù, ưu tiên CS từ xa.</div>
+            <div>F8/F4/F2 chưa hoàn tất sẽ được ưu tiên bù trong W1-W2 tháng sau nếu cụm còn capacity.</div>
+            <div>F1 chưa hoàn tất được bù vào W2-W3 cùng cụm. F0.5/F0.3 chưa đi sẽ được ghi nhớ để ưu tiên gợi ý tháng sau.</div>
             <div>Có thể tick “Cần bù” để ép một lượt vào danh sách bù tháng sau, kèm ghi chú lý do.</div>
           </div>
         </div>

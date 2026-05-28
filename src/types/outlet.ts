@@ -1,5 +1,5 @@
 export type Channel = "GT" | "MT";
-export type Frequency = "F4" | "F2" | "F1" | "F0.5";
+export type Frequency = "F8" | "F4" | "F2" | "F1" | "F0.5" | "F0.3";
 
 export interface Outlet {
   outletId: string;

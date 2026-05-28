@@ -18,10 +18,12 @@ export const DEFAULT_SETTINGS: PlannerSettings = {
 
 const weeks: WeekKey[] = ["W1", "W2", "W3", "W4"];
 const frequencyRank: Record<Frequency, number> = {
+  F8: 6,
   F4: 4,
   F2: 3,
   F1: 2,
   "F0.5": 1,
+  "F0.3": 0,
 };
 
 const clamp = (value: number, min = 0, max = 100) => Math.min(max, Math.max(min, value));
@@ -52,17 +54,21 @@ export function calculateRiskScore(ruiRoMatKhach: number): number {
 }
 
 export function assignFrequency(totalScore: number): Frequency {
+  if (totalScore >= 92) return "F8";
   if (totalScore >= 80) return "F4";
   if (totalScore >= 60) return "F2";
   if (totalScore >= 40) return "F1";
-  return "F0.5";
+  if (totalScore >= 25) return "F0.5";
+  return "F0.3";
 }
 
 export function calculateMonthlyVisits(frequency: Frequency): number {
+  if (frequency === "F8") return 8;
   if (frequency === "F4") return 4;
   if (frequency === "F2") return 2;
   if (frequency === "F1") return 1;
-  return 0.5;
+  if (frequency === "F0.5") return 0.5;
+  return 0.3;
 }
 
 export function calculateOutletScore(outlet: Outlet, settings: PlannerSettings = DEFAULT_SETTINGS): OutletScore {
@@ -146,6 +152,7 @@ export function generateMonthlyRoutePlan(
   const clusterById = new Map(clusters.map((cluster) => [cluster.maCum, cluster]));
   const visits: RouteVisit[] = [];
   const capacityCounter = new Map<string, number>();
+  const outletWeekCounter = new Map<string, number>();
   const f2CounterByCluster = new Map<string, number>();
   const f1CounterByCluster = new Map<string, number>();
 
@@ -154,7 +161,7 @@ export function generateMonthlyRoutePlan(
 
   for (const carryover of carryovers) {
     const outlet = outletById.get(carryover.outletId);
-    if (!outlet || outlet.frequency === "F0.5") continue;
+    if (!outlet) continue;
     const cluster = clusterById.get(outlet.cumNho);
     if (!cluster) continue;
     const targetWeeks: WeekKey[] = outlet.frequency === "F4" || outlet.frequency === "F2" ? ["W1", "W2"] : ["W2", "W3"];
@@ -198,10 +205,14 @@ export function generateMonthlyRoutePlan(
     const targetWeeks = getWeeksForOutlet(outlet, f2CounterByCluster, f1CounterByCluster);
 
     for (const week of targetWeeks) {
+      const outletWeekKey = `${week}-${outlet.outletId}`;
+      const outletWeekSequence = (outletWeekCounter.get(outletWeekKey) ?? 0) + 1;
+      outletWeekCounter.set(outletWeekKey, outletWeekSequence);
       const key = `${week}-${cluster.maCum}`;
       const capacity = cluster.capacityNgay || settings.defaultDailyCapacity;
       const used = capacityCounter.get(key) ?? 0;
-      const isRemote = outlet.frequency === "F0.5" && used >= capacity;
+      const isFlexibleLowFrequency = outlet.frequency === "F0.5" || outlet.frequency === "F0.3";
+      const isRemote = isFlexibleLowFrequency && used >= capacity;
       const warning = used >= capacity ? "Quá tải, cần tách cụm hoặc hạ tần suất" : undefined;
 
       if (!isRemote && used < capacity) {
@@ -209,7 +220,7 @@ export function generateMonthlyRoutePlan(
       }
 
       visits.push({
-        id: `${year}-${month}-${week}-${outlet.outletId}`,
+        id: outletWeekSequence === 1 ? `${year}-${month}-${week}-${outlet.outletId}` : `${year}-${month}-${week}-${outlet.outletId}-V${outletWeekSequence}`,
         month,
         year,
         week,
@@ -235,6 +246,7 @@ function getWeeksForOutlet(
   f1CounterByCluster: Map<string, number>,
 ): WeekKey[] {
   if (outlet.frequency === "F4") return weeks;
+  if (outlet.frequency === "F8") return ["W1", "W1", "W2", "W2", "W3", "W3", "W4", "W4"];
   if (outlet.frequency === "F2") {
     const current = f2CounterByCluster.get(outlet.cumNho) ?? 0;
     f2CounterByCluster.set(outlet.cumNho, current + 1);
@@ -245,6 +257,7 @@ function getWeeksForOutlet(
     f1CounterByCluster.set(outlet.cumNho, current + 1);
     return [weeks[current % weeks.length]];
   }
+  if (outlet.frequency === "F0.5") return ["W4"];
   return ["W4"];
 }
 

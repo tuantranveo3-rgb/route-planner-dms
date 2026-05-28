@@ -77,7 +77,8 @@ export function buildCarryoversForNextMonth(plan: RouteVisit[], records: RouteEx
     const record = records.find((item) => item.visitId === visit.id);
     if (!record) continue;
     const effectiveStatus = record?.actualStatus ?? visit.status;
-    const shouldCarry = record?.carryToNextMonth || (visit.frequency !== "F0.5" && isMissedVisit(effectiveStatus));
+    const isLowFrequencyMiss = (visit.frequency === "F0.5" || visit.frequency === "F0.3") && isMissedVisit(effectiveStatus);
+    const shouldCarry = record?.carryToNextMonth || (visit.frequency !== "F0.5" && visit.frequency !== "F0.3" && isMissedVisit(effectiveStatus)) || isLowFrequencyMiss;
     if (!shouldCarry || visit.status === "CS từ xa") continue;
     const dedupeKey = `${visit.outlet.outletId}-${visit.id}`;
     if (existing.has(dedupeKey)) continue;

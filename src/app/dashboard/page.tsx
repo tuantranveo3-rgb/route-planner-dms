@@ -15,7 +15,7 @@ const counts = outlets.reduce<Record<Frequency, number>>(
     acc[outlet.frequency] += 1;
     return acc;
   },
-  { F4: 0, F2: 0, F1: 0, "F0.5": 0 },
+  { F8: 0, F4: 0, F2: 0, F1: 0, "F0.5": 0, "F0.3": 0 },
 );
 const monthlyVisits = outlets.reduce((sum, outlet) => sum + outlet.monthlyVisits, 0);
 const averageDailyVisits = Number((monthlyVisits / DEFAULT_SETTINGS.workingDaysPerMonth).toFixed(1));
@@ -31,7 +31,7 @@ export default function DashboardPage() {
 
       <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <MetricCard label="Tổng điểm bán" value={outlets.length} hint="Dữ liệu seed TP.HCM" />
-        <MetricCard label="Tổng lượt ghé/tháng" value={monthlyVisits} hint="F4=4, F2=2, F1=1, F0.5=0.5" />
+        <MetricCard label="Tổng lượt ghé/tháng" value={monthlyVisits} hint="F8=8, F4=4, F2=2, F1=1, F0.5/F0.3 linh hoạt" />
         <MetricCard label="Lượt ghé/ngày bình quân" value={averageDailyVisits} hint={`${DEFAULT_SETTINGS.workingDaysPerMonth} ngày làm việc/tháng`} />
         <MetricCard label="Ngưỡng cảnh báo" value="25 điểm/ngày" hint={averageDailyVisits > 25 ? "Đang quá tải" : "Đang trong ngưỡng"} />
         <MetricCard label="Cụm quá tải" value={overloaded.length} hint="Theo capacity cụm/ngày" />
@@ -56,7 +56,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div className="mb-6 grid gap-4 md:grid-cols-4">
+      <div className="mb-6 grid gap-4 md:grid-cols-3 xl:grid-cols-6">
         {(Object.keys(counts) as Frequency[]).map((frequency) => (
           <div key={frequency} className="rounded-lg border border-line bg-white p-4 shadow-soft">
             <div className="mb-3 flex items-center justify-between">

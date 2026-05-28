@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, CalendarDays, Database, MapPinned, Settings, Upload, Users, Workflow } from "lucide-react";
+import { BarChart3, CalendarDays, Database, FileBarChart, MapPinned, Settings, Upload, Users, Workflow } from "lucide-react";
 
 const items = [
   { href: "/dashboard", label: "Dashboard", icon: BarChart3 },
@@ -10,6 +10,7 @@ const items = [
   { href: "/clusters", label: "Cụm tuyến", icon: MapPinned },
   { href: "/territories", label: "Phân vùng sale", icon: Users },
   { href: "/planner", label: "Planner", icon: CalendarDays },
+  { href: "/reports", label: "Báo cáo", icon: FileBarChart },
   { href: "/import-export", label: "Import/Export", icon: Upload },
   { href: "/settings", label: "Cài đặt", icon: Settings },
 ];

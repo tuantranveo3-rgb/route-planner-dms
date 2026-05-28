@@ -34,25 +34,29 @@ const strongOutlet: Outlet = {
 };
 
 describe("route logic", () => {
-  it("calculateOutletScore returns weighted score and F4 for a strong outlet", () => {
+  it("calculateOutletScore returns weighted score and F8 for a top outlet", () => {
     const score = calculateOutletScore(strongOutlet);
     expect(score.totalScore).toBe(100);
-    expect(score.frequency).toBe("F4");
-    expect(score.monthlyVisits).toBe(4);
+    expect(score.frequency).toBe("F8");
+    expect(score.monthlyVisits).toBe(8);
   });
 
   it("assignFrequency maps score thresholds correctly", () => {
+    expect(assignFrequency(92)).toBe("F8");
     expect(assignFrequency(80)).toBe("F4");
     expect(assignFrequency(60)).toBe("F2");
     expect(assignFrequency(40)).toBe("F1");
-    expect(assignFrequency(39.9)).toBe("F0.5");
+    expect(assignFrequency(25)).toBe("F0.5");
+    expect(assignFrequency(24.9)).toBe("F0.3");
   });
 
   it("calculateMonthlyVisits maps each frequency to visit count", () => {
+    expect(calculateMonthlyVisits("F8")).toBe(8);
     expect(calculateMonthlyVisits("F4")).toBe(4);
     expect(calculateMonthlyVisits("F2")).toBe(2);
     expect(calculateMonthlyVisits("F1")).toBe(1);
     expect(calculateMonthlyVisits("F0.5")).toBe(0.5);
+    expect(calculateMonthlyVisits("F0.3")).toBe(0.3);
   });
 
   it("generateMonthlyRoutePlan creates non-empty weekly plan with F4 locked in all weeks", () => {

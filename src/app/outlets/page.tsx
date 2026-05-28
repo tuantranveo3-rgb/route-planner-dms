@@ -48,10 +48,12 @@ export default function OutletsPage() {
         />
         <select className="h-10 rounded-md border border-line px-3 text-sm" value={frequency} onChange={(event) => setFrequency(event.target.value as "all" | Frequency)}>
           <option value="all">Tất cả F</option>
+          <option value="F8">F8</option>
           <option value="F4">F4</option>
           <option value="F2">F2</option>
           <option value="F1">F1</option>
           <option value="F0.5">F0.5</option>
+          <option value="F0.3">F0.3</option>
         </select>
       </div>
       <DataTable columns={columns} rows={rows} rowKey={(row) => row.outletId} />

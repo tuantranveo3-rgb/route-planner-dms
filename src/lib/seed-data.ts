@@ -24,6 +24,8 @@ export const salesTerritories: SalesTerritory[] = [
     cumNhoPhuTrach: ["Q1-A", "Q1-B"],
     saleBackup: "Bình Trần",
     ngayDiUuTien: ["Thứ 2", "Thứ 3"],
+    minVisitsPerDay: 6,
+    maxVisitsPerDay: 15,
     ghiChu: "Phụ trách lõi trung tâm, chia tuyến theo Q1-A/Q1-B.",
   },
   {
@@ -32,6 +34,8 @@ export const salesTerritories: SalesTerritory[] = [
     cumNhoPhuTrach: ["Q3-A", "PN-A"],
     saleBackup: "An Nguyễn",
     ngayDiUuTien: ["Thứ 4", "Thứ 5"],
+    minVisitsPerDay: 6,
+    maxVisitsPerDay: 15,
     ghiChu: "Phụ trách cụm gần trung tâm, ưu tiên khách MT và C2 tăng trưởng.",
   },
   {
@@ -40,6 +44,8 @@ export const salesTerritories: SalesTerritory[] = [
     cumNhoPhuTrach: ["BT-A", "GV-A", "TB-A"],
     saleBackup: "Dung Phạm",
     ngayDiUuTien: ["Thứ 2", "Thứ 6", "Thứ 7"],
+    minVisitsPerDay: 7,
+    maxVisitsPerDay: 14,
     ghiChu: "Khu vực rộng, cần theo dõi min/max sale/ngày.",
   },
   {
@@ -48,6 +54,8 @@ export const salesTerritories: SalesTerritory[] = [
     cumNhoPhuTrach: ["TP-A", "BTA-A", "TD-A"],
     saleBackup: "Chi Lê",
     ngayDiUuTien: ["Thứ 3", "Thứ 4", "Thứ 5"],
+    minVisitsPerDay: 5,
+    maxVisitsPerDay: 13,
     ghiChu: "Cụm xa tâm, F0.5 ưu tiên CS từ xa nếu quá tải.",
   },
 ];
