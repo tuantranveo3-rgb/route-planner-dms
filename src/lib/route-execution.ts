@@ -1,4 +1,6 @@
-import type { CarryoverVisit, RouteExecutionRecord, RouteVisit, VisitStatus } from "@/types/route";
+import type { Outlet } from "@/types/outlet";
+import type { CarryoverVisit, PlannerSettings, RouteExecutionRecord, RouteVisit, VisitStatus } from "@/types/route";
+import { DEFAULT_SETTINGS, enrichOutlets } from "@/lib/route-logic";
 
 export const EXECUTION_STORAGE_KEY = "route-planner-dms-execution-records-v2";
 
@@ -90,6 +92,59 @@ export function buildCarryoversForNextMonth(plan: RouteVisit[], records: RouteEx
       sourceYear: visit.year,
       sourceWeek: visit.week,
       reason: record?.note || `Chưa hoàn tất trạng thái ${effectiveStatus}`,
+    });
+  }
+
+  return carryovers;
+}
+
+function monthIndex(month: number, year: number) {
+  return year * 12 + month;
+}
+
+function sortNewestFirst(records: RouteExecutionRecord[]) {
+  return [...records].sort((a, b) => monthIndex(b.month, b.year) - monthIndex(a.month, a.year));
+}
+
+export function buildLowFrequencyHistoryCarryovers(
+  outlets: Outlet[],
+  records: RouteExecutionRecord[],
+  targetMonth: number,
+  targetYear: number,
+  settings: PlannerSettings = DEFAULT_SETTINGS,
+): CarryoverVisit[] {
+  const targetIndex = monthIndex(targetMonth, targetYear);
+  const enriched = enrichOutlets(outlets, settings).filter((outlet) => outlet.frequency === "F0.5" || outlet.frequency === "F0.3");
+  const carryovers: CarryoverVisit[] = [];
+
+  for (const outlet of enriched) {
+    const outletRecords = records.filter((record) => record.outletId === outlet.outletId && monthIndex(record.month, record.year) < targetIndex);
+    if (!outletRecords.length) continue;
+
+    const intervalMonths = outlet.frequency === "F0.5" ? 2 : 3;
+    const newestRecords = sortNewestFirst(outletRecords);
+    const lastCompleted = newestRecords.find((record) => isCompletedVisit(record.actualStatus));
+    const recentMiss = newestRecords.find((record) => {
+      const age = targetIndex - monthIndex(record.month, record.year);
+      return age <= intervalMonths && (isMissedVisit(record.actualStatus) || record.carryToNextMonth);
+    });
+    const monthsSinceCompleted = lastCompleted ? targetIndex - monthIndex(lastCompleted.month, lastCompleted.year) : intervalMonths + 1;
+    const overdue = monthsSinceCompleted >= intervalMonths;
+
+    if (!recentMiss && !overdue) continue;
+
+    const source = recentMiss ?? lastCompleted ?? newestRecords[0];
+    const reason = recentMiss
+      ? `${outlet.frequency} bị miss/cần bù trong ${intervalMonths} tháng gần nhất: ${recentMiss.note || recentMiss.actualStatus}`
+      : `${outlet.frequency} đã ${monthsSinceCompleted} tháng chưa ghi nhận ghé, ưu tiên kéo vào tuyến tháng này`;
+
+    carryovers.push({
+      outletId: outlet.outletId,
+      sourceVisitId: source.visitId,
+      sourceMonth: source.month,
+      sourceYear: source.year,
+      sourceWeek: source.week,
+      reason,
     });
   }
 

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, CalendarDays, Database, FileBarChart, MapPinned, Settings, Upload, Users, Workflow } from "lucide-react";
+import { BarChart3, BookOpen, CalendarDays, Database, FileBarChart, Map, MapPinned, Settings, Upload, Users, Workflow } from "lucide-react";
 
 const items = [
   { href: "/dashboard", label: "Dashboard", icon: BarChart3 },
@@ -10,9 +10,11 @@ const items = [
   { href: "/clusters", label: "Cụm tuyến", icon: MapPinned },
   { href: "/territories", label: "Phân vùng sale", icon: Users },
   { href: "/planner", label: "Planner", icon: CalendarDays },
+  { href: "/route-map", label: "Bản đồ tuyến", icon: Map },
   { href: "/reports", label: "Báo cáo", icon: FileBarChart },
   { href: "/import-export", label: "Import/Export", icon: Upload },
   { href: "/settings", label: "Cài đặt", icon: Settings },
+  { href: "/guide", label: "Hướng dẫn", icon: BookOpen },
 ];
 
 export function Sidebar() {

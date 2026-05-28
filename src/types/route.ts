@@ -17,12 +17,23 @@ export interface PlannerSettings {
   workingDaysPerMonth: number;
 }
 
+export interface SaleStartPoint {
+  salePhuTrach: string;
+  date?: string;
+  tenDiemXuatPhat: string;
+  loaiDiem: "Văn phòng" | "Kho" | "Nhà sale" | "Điểm hẹn";
+  toaDoX: number;
+  toaDoY: number;
+  ghiChu: string;
+}
+
 export interface RouteVisit {
   id: string;
   month: number;
   year: number;
   week: WeekKey;
   dayName: string;
+  plannedDate: string;
   clusterId: string;
   clusterName: string;
   routeOrder: number;
@@ -50,6 +61,14 @@ export interface RouteExecutionRecord {
   note?: string;
   carryToNextMonth: boolean;
   updatedAt: string;
+}
+
+export interface SaleUnavailableDay {
+  id: string;
+  salePhuTrach: string;
+  date: string;
+  reason: "Ở văn phòng" | "Ở kho" | "Chỉ đạo khác" | "Nghỉ phép";
+  note?: string;
 }
 
 export interface CarryoverVisit {

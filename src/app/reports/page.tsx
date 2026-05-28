@@ -5,7 +5,7 @@ import { DataTable, type Column } from "@/components/DataTable";
 import { FrequencyBadge } from "@/components/FrequencyBadge";
 import { MetricCard } from "@/components/MetricCard";
 import { PageHeader } from "@/components/PageHeader";
-import { buildCarryoversForNextMonth, EXECUTION_STORAGE_KEY, recordsForPeriod, summarizeExecution } from "@/lib/route-execution";
+import { buildCarryoversForNextMonth, buildLowFrequencyHistoryCarryovers, EXECUTION_STORAGE_KEY, recordsForPeriod, summarizeExecution } from "@/lib/route-execution";
 import { generateMonthlyRoutePlan } from "@/lib/route-logic";
 import { clusters, saleOwners, seedOutlets } from "@/lib/seed-data";
 import { loadPlannerSettings } from "@/lib/settings-storage";
@@ -48,7 +48,12 @@ export default function ReportsPage() {
   const previousPeriod = getPreviousPeriod(month, year);
   const previousPlan = useMemo(() => generateMonthlyRoutePlan(previousPeriod.month, previousPeriod.year, seedOutlets, clusters, settings), [previousPeriod.month, previousPeriod.year, settings]);
   const previousRecords = useMemo(() => recordsForPeriod(records, previousPeriod.month, previousPeriod.year), [records, previousPeriod.month, previousPeriod.year]);
-  const carryovers = useMemo(() => buildCarryoversForNextMonth(previousPlan, previousRecords), [previousPlan, previousRecords]);
+  const carryovers = useMemo(() => {
+    const previousCarryovers = buildCarryoversForNextMonth(previousPlan, previousRecords);
+    const historyCarryovers = buildLowFrequencyHistoryCarryovers(seedOutlets, records, month, year, settings);
+    const byOutlet = new Map([...previousCarryovers, ...historyCarryovers].map((item) => [item.outletId, item]));
+    return [...byOutlet.values()];
+  }, [previousPlan, previousRecords, records, month, year, settings]);
   const plan = useMemo(() => generateMonthlyRoutePlan(month, year, seedOutlets, clusters, settings, carryovers), [month, year, settings, carryovers]);
   const currentRecords = useMemo(() => recordsForPeriod(records, month, year), [records, month, year]);
   const filteredPlan = sale === "all" ? plan : plan.filter((visit) => visit.outlet.salePhuTrach === sale);

@@ -1,5 +1,6 @@
 import type { RouteCluster } from "@/types/cluster";
 import type { Outlet } from "@/types/outlet";
+import type { SaleStartPoint } from "@/types/route";
 import type { SalesTerritory } from "@/types/territory";
 
 export const clusters: RouteCluster[] = [
@@ -57,6 +58,41 @@ export const salesTerritories: SalesTerritory[] = [
     minVisitsPerDay: 5,
     maxVisitsPerDay: 13,
     ghiChu: "Cụm xa tâm, F0.5 ưu tiên CS từ xa nếu quá tải.",
+  },
+];
+
+export const saleStartPoints: SaleStartPoint[] = [
+  {
+    salePhuTrach: "An Nguyễn",
+    tenDiemXuatPhat: "Văn phòng trung tâm",
+    loaiDiem: "Văn phòng",
+    toaDoX: 8.5,
+    toaDoY: 9.2,
+    ghiChu: "Điểm xuất phát mặc định cho tuyến Quận 1.",
+  },
+  {
+    salePhuTrach: "Bình Trần",
+    tenDiemXuatPhat: "Văn phòng trung tâm",
+    loaiDiem: "Văn phòng",
+    toaDoX: 8.5,
+    toaDoY: 9.2,
+    ghiChu: "Xuất phát từ văn phòng, đi Q3/Phú Nhuận.",
+  },
+  {
+    salePhuTrach: "Chi Lê",
+    tenDiemXuatPhat: "Kho Bình Thạnh",
+    loaiDiem: "Kho",
+    toaDoX: 25.4,
+    toaDoY: 18.6,
+    ghiChu: "Xuất phát từ kho để đi Bình Thạnh, Gò Vấp, Tân Bình.",
+  },
+  {
+    salePhuTrach: "Dung Phạm",
+    tenDiemXuatPhat: "Kho phía Tây",
+    loaiDiem: "Kho",
+    toaDoX: 37.8,
+    toaDoY: 18.4,
+    ghiChu: "Xuất phát từ kho phía Tây cho Tân Phú, Bình Tân, Thủ Đức.",
   },
 ];
 

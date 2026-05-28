@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { clusters, salesTerritories, seedOutlets } from "@/lib/seed-data";
 import { findUnassignedClusters, summarizeTerritories } from "@/lib/territory-logic";
 import { parseExecutionHistoryCsv } from "@/lib/csv";
-import { buildCarryoversForNextMonth, summarizeExecution, upsertExecutionRecord } from "@/lib/route-execution";
+import { buildCarryoversForNextMonth, buildLowFrequencyHistoryCarryovers, summarizeExecution, upsertExecutionRecord } from "@/lib/route-execution";
 import {
   assignFrequency,
   calculateMonthlyVisits,
@@ -81,6 +81,39 @@ describe("route logic", () => {
 
     expect(carryovers).toHaveLength(1);
     expect(nextPlan.some((item) => item.isCarryover && item.outlet.outletId === visit!.outlet.outletId)).toBe(true);
+  });
+
+  it("prioritizes overdue F0.5 and F0.3 outlets from cumulative history", () => {
+    const lowFrequencyOutlet: Outlet = {
+      ...strongOutlet,
+      outletId: "LOW-F05",
+      doanhSo3Thang: 75_000_000,
+      soDon3Thang: 6,
+      tiemNang: 2,
+      ruiRoMatKhach: 1,
+      khoangCachTamCumKm: 8,
+    };
+    const records = [
+      {
+        visitId: "2026-3-W4-LOW-F05",
+        outletId: "LOW-F05",
+        month: 3,
+        year: 2026,
+        week: "W4" as const,
+        clusterId: "Q1-A",
+        salePhuTrach: "An Nguyễn",
+        actualStatus: "Đã đi" as const,
+        carryToNextMonth: false,
+        updatedAt: "2026-03-28T00:00:00.000Z",
+      },
+    ];
+
+    const carryovers = buildLowFrequencyHistoryCarryovers([lowFrequencyOutlet], records, 5, 2026);
+    const plan = generateMonthlyRoutePlan(5, 2026, [lowFrequencyOutlet], clusters, undefined, carryovers);
+
+    expect(carryovers).toHaveLength(1);
+    expect(plan.filter((visit) => visit.outlet.outletId === "LOW-F05")).toHaveLength(1);
+    expect(plan[0].isCarryover).toBe(true);
   });
 
   it("summarizeExecution reports completed and missed visits", () => {

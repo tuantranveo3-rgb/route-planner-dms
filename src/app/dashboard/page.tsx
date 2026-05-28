@@ -21,6 +21,29 @@ const counts = outlets.reduce<Record<Frequency, number>>(
 const monthlyVisits = Number(outlets.reduce((sum, outlet) => sum + outlet.monthlyVisits, 0).toFixed(1));
 const averageDailyVisits = Number((monthlyVisits / DEFAULT_SETTINGS.workingDaysPerMonth).toFixed(1));
 const overloaded = getOverloadedClusters(plan, clusters);
+const saleWarningItems = (() => {
+  const territoryBySale = new Map(salesTerritories.map((territory) => [territory.salePhuTrach, territory]));
+  const grouped = new Map<string, { sale: string; week: string; dayName: string; visits: number; min: number; max: number }>();
+
+  for (const visit of plan.filter((item) => item.status !== "CS từ xa")) {
+    const territory = territoryBySale.get(visit.outlet.salePhuTrach);
+    const min = territory?.minVisitsPerDay ?? DEFAULT_SETTINGS.minVisitsPerSaleDay;
+    const max = territory?.maxVisitsPerDay ?? DEFAULT_SETTINGS.maxVisitsPerSaleDay;
+    const key = `${visit.week}-${visit.dayName}-${visit.outlet.salePhuTrach}`;
+    const current = grouped.get(key) ?? {
+      sale: visit.outlet.salePhuTrach,
+      week: visit.week,
+      dayName: visit.dayName,
+      visits: 0,
+      min,
+      max,
+    };
+    current.visits += 1;
+    grouped.set(key, current);
+  }
+
+  return [...grouped.values()].filter((item) => item.visits < item.min || item.visits > item.max);
+})();
 
 export default function DashboardPage() {
   return (
@@ -34,7 +57,7 @@ export default function DashboardPage() {
         <MetricCard label="Tổng điểm bán" value={outlets.length} hint="Dữ liệu seed TP.HCM" />
         <MetricCard label="Tổng lượt ghé/tháng" value={formatNumber(monthlyVisits)} hint="F8=8, F4=4, F2=2, F1=1, F0.5/F0.3 linh hoạt" />
         <MetricCard label="Lượt ghé/ngày bình quân" value={formatNumber(averageDailyVisits)} hint={`${DEFAULT_SETTINGS.workingDaysPerMonth} ngày làm việc/tháng`} />
-        <MetricCard label="Ngưỡng cảnh báo" value="25 điểm/ngày" hint={averageDailyVisits > 25 ? "Đang quá tải" : "Đang trong ngưỡng"} />
+        <MetricCard label="Cảnh báo sale/ngày" value={saleWarningItems.length} hint="Theo min/max riêng từng sale" />
         <MetricCard label="Cụm quá tải" value={overloaded.length} hint="Theo capacity cụm/ngày" />
       </div>
 
@@ -70,9 +93,13 @@ export default function DashboardPage() {
       </div>
 
       <OverloadWarning
-        title={averageDailyVisits > 25 ? "Cảnh báo quá tải toàn đội" : "Theo dõi cụm vượt capacity"}
+        title="Theo dõi min/max sale/ngày và cụm vượt capacity"
         items={[
-          ...(averageDailyVisits > 25 ? [`Bình quân ${averageDailyVisits} điểm/ngày, vượt ngưỡng 25 điểm/ngày.`] : []),
+          ...saleWarningItems.map((item) =>
+            item.visits > item.max
+              ? `${item.week} ${item.dayName} - ${item.sale}: ${item.visits} điểm, vượt max ${item.max}.`
+              : `${item.week} ${item.dayName} - ${item.sale}: ${item.visits} điểm, dưới min ${item.min}.`,
+          ),
           ...overloaded.map((item) => `${item.week} - ${item.clusterName}: ${item.visits}/${item.capacity} điểm. Quá tải, cần tách cụm hoặc hạ tần suất.`),
         ]}
       />

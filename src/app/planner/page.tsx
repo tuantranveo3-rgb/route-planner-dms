@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { downloadCsv, plannerToCsv } from "@/lib/csv";
 import {
   buildCarryoversForNextMonth,
+  buildLowFrequencyHistoryCarryovers,
   EXECUTION_STORAGE_KEY,
   executionStatuses,
   getEffectiveStatus,
@@ -18,18 +19,105 @@ import {
   upsertExecutionRecord,
 } from "@/lib/route-execution";
 import { generateMonthlyRoutePlan, getOverloadedClusters } from "@/lib/route-logic";
-import { clusters, saleOwners, seedOutlets } from "@/lib/seed-data";
+import { clusters, saleOwners, saleStartPoints, seedOutlets } from "@/lib/seed-data";
 import { getSaleLimits, loadSalesConfig } from "@/lib/sales-config";
 import { loadPlannerSettings } from "@/lib/settings-storage";
 import type { Frequency } from "@/types/outlet";
-import type { PlannerSettings, RouteExecutionRecord, RouteVisit, VisitStatus, WeekKey } from "@/types/route";
+import type { PlannerSettings, RouteExecutionRecord, RouteVisit, SaleUnavailableDay, VisitStatus, WeekKey } from "@/types/route";
 import { DEFAULT_SETTINGS } from "@/lib/route-logic";
 import type { SalesTerritory } from "@/types/territory";
 
 type QuickRouteFilter = "all" | "carryover" | "missed" | "missed-priority";
+type PlannerViewMode = "daily" | "table";
+type UnavailableReason = SaleUnavailableDay["reason"];
+
+const UNAVAILABLE_STORAGE_KEY = "route-planner-dms-sale-unavailable-days-v1";
+const unavailableReasons: UnavailableReason[] = ["Ở văn phòng", "Ở kho", "Chỉ đạo khác", "Nghỉ phép"];
 
 function getPreviousPeriod(month: number, year: number) {
   return month === 1 ? { month: 12, year: year - 1 } : { month: month - 1, year };
+}
+
+function getDayNameFromDate(dateValue: string) {
+  const date = new Date(`${dateValue}T00:00:00`);
+  return ["Chủ nhật", "Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7"][date.getDay()];
+}
+
+function formatDateValue(dateValue: string) {
+  const date = new Date(`${dateValue}T00:00:00`);
+  return new Intl.DateTimeFormat("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" }).format(date);
+}
+
+function toDateValue(date: Date) {
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function findNextAvailableDate(sourceDate: string, salePhuTrach: string, unavailableDays: SaleUnavailableDay[], month: number, year: number) {
+  const blockedDates = new Set(unavailableDays.filter((item) => item.salePhuTrach === salePhuTrach).map((item) => item.date));
+  const date = new Date(`${sourceDate}T00:00:00`);
+  const lastDay = new Date(year, month, 0).getDate();
+
+  for (let day = date.getDate() + 1; day <= lastDay; day += 1) {
+    const candidate = new Date(year, month - 1, day);
+    if (candidate.getDay() === 0) continue;
+    const value = toDateValue(candidate);
+    if (!blockedDates.has(value)) return value;
+  }
+
+  return "";
+}
+
+function applyUnavailableDays(plan: RouteVisit[], unavailableDays: SaleUnavailableDay[], month: number, year: number): RouteVisit[] {
+  if (!unavailableDays.length) return plan;
+  const unavailableBySaleDate = new Map(unavailableDays.map((item) => [`${item.salePhuTrach}-${item.date}`, item]));
+
+  return plan.map((visit) => {
+    const unavailable = unavailableBySaleDate.get(`${visit.outlet.salePhuTrach}-${visit.plannedDate}`);
+    if (!unavailable || visit.status === "CS từ xa") return visit;
+
+    const nextDate = findNextAvailableDate(visit.plannedDate, visit.outlet.salePhuTrach, unavailableDays, month, year);
+    const reason = `${unavailable.reason}${unavailable.note ? `: ${unavailable.note}` : ""}`;
+    const warning = nextDate
+      ? `Dời từ ${formatDateValue(visit.plannedDate)} do ${reason}`
+      : `Không còn ngày trống để dời trong tháng do ${reason}`;
+
+    return {
+      ...visit,
+      plannedDate: nextDate || visit.plannedDate,
+      dayName: nextDate ? getDayNameFromDate(nextDate) : visit.dayName,
+      status: nextDate ? visit.status : "Dời lịch",
+      warning: visit.warning ? `${visit.warning}; ${warning}` : warning,
+    };
+  });
+}
+
+function groupDailySchedule(rows: RouteVisit[], salesConfig: SalesTerritory[], settings: PlannerSettings) {
+  const grouped = new Map<string, { date: string; dayName: string; sale: string; visits: RouteVisit[]; min: number; max: number }>();
+
+  for (const visit of rows.filter((item) => item.status !== "CS từ xa")) {
+    const key = `${visit.plannedDate}-${visit.outlet.salePhuTrach}`;
+    const limits = getSaleLimits(salesConfig, visit.outlet.salePhuTrach, settings.minVisitsPerSaleDay, settings.maxVisitsPerSaleDay);
+    const current = grouped.get(key) ?? {
+      date: visit.plannedDate,
+      dayName: visit.dayName,
+      sale: visit.outlet.salePhuTrach,
+      visits: [],
+      min: limits.min,
+      max: limits.max,
+    };
+    current.visits.push(visit);
+    grouped.set(key, current);
+  }
+
+  return [...grouped.values()]
+    .map((group) => ({
+      ...group,
+      visits: [...group.visits].sort((a, b) => a.routeOrder - b.routeOrder),
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date) || a.sale.localeCompare(b.sale));
 }
 
 export default function PlannerPage() {
@@ -41,13 +129,21 @@ export default function PlannerPage() {
   const [frequency, setFrequency] = useState<"all" | Frequency>("all");
   const [status, setStatus] = useState<"all" | VisitStatus>("all");
   const [quickFilter, setQuickFilter] = useState<QuickRouteFilter>("all");
+  const [viewMode, setViewMode] = useState<PlannerViewMode>("daily");
   const [records, setRecords] = useState<RouteExecutionRecord[]>([]);
   const [settings, setSettings] = useState<PlannerSettings>(DEFAULT_SETTINGS);
   const [salesConfig, setSalesConfig] = useState<SalesTerritory[]>([]);
+  const [unavailableDays, setUnavailableDays] = useState<SaleUnavailableDay[]>([]);
+  const [unavailableSale, setUnavailableSale] = useState(saleOwners[0] ?? "");
+  const [unavailableDate, setUnavailableDate] = useState("");
+  const [unavailableReason, setUnavailableReason] = useState<UnavailableReason>("Ở văn phòng");
+  const [unavailableNote, setUnavailableNote] = useState("");
 
   useEffect(() => {
     const raw = window.localStorage.getItem(EXECUTION_STORAGE_KEY);
     if (raw) setRecords(JSON.parse(raw) as RouteExecutionRecord[]);
+    const unavailableRaw = window.localStorage.getItem(UNAVAILABLE_STORAGE_KEY);
+    if (unavailableRaw) setUnavailableDays(JSON.parse(unavailableRaw) as SaleUnavailableDay[]);
     setSettings(loadPlannerSettings());
     setSalesConfig(loadSalesConfig());
   }, []);
@@ -56,23 +152,33 @@ export default function PlannerPage() {
     window.localStorage.setItem(EXECUTION_STORAGE_KEY, JSON.stringify(records));
   }, [records]);
 
+  useEffect(() => {
+    window.localStorage.setItem(UNAVAILABLE_STORAGE_KEY, JSON.stringify(unavailableDays));
+  }, [unavailableDays]);
+
   const previousPeriod = getPreviousPeriod(month, year);
   const previousBasePlan = useMemo(
-    () => generateMonthlyRoutePlan(previousPeriod.month, previousPeriod.year, seedOutlets, clusters, settings),
+    () => generateMonthlyRoutePlan(previousPeriod.month, previousPeriod.year, seedOutlets, clusters, settings, [], saleStartPoints),
     [previousPeriod.month, previousPeriod.year, settings],
   );
   const previousRecords = useMemo(
     () => recordsForPeriod(records, previousPeriod.month, previousPeriod.year),
     [records, previousPeriod.month, previousPeriod.year],
   );
-  const carryovers = useMemo(() => buildCarryoversForNextMonth(previousBasePlan, previousRecords), [previousBasePlan, previousRecords]);
-  const plan = useMemo(() => generateMonthlyRoutePlan(month, year, seedOutlets, clusters, settings, carryovers), [month, year, settings, carryovers]);
+  const carryovers = useMemo(() => {
+    const previousCarryovers = buildCarryoversForNextMonth(previousBasePlan, previousRecords);
+    const historyCarryovers = buildLowFrequencyHistoryCarryovers(seedOutlets, records, month, year, settings);
+    const byOutlet = new Map([...previousCarryovers, ...historyCarryovers].map((item) => [item.outletId, item]));
+    return [...byOutlet.values()];
+  }, [previousBasePlan, previousRecords, records, month, year, settings]);
+  const plan = useMemo(() => generateMonthlyRoutePlan(month, year, seedOutlets, clusters, settings, carryovers, saleStartPoints), [month, year, settings, carryovers]);
+  const scheduledPlan = useMemo(() => applyUnavailableDays(plan, unavailableDays, month, year), [plan, unavailableDays, month, year]);
   const currentRecords = useMemo(() => recordsForPeriod(records, month, year), [records, month, year]);
   const planWithExecution = useMemo(
-    () => plan.map((visit) => ({ ...visit, status: getEffectiveStatus(visit, currentRecords) })),
-    [plan, currentRecords],
+    () => scheduledPlan.map((visit) => ({ ...visit, status: getEffectiveStatus(visit, currentRecords) })),
+    [scheduledPlan, currentRecords],
   );
-  const summary = summarizeExecution(plan, currentRecords);
+  const summary = summarizeExecution(scheduledPlan, currentRecords);
   const overloaded = getOverloadedClusters(planWithExecution, clusters);
   const saleDayWarnings = getSaleDayWarnings(planWithExecution, settings);
   const rows = planWithExecution.filter((visit) => {
@@ -85,6 +191,10 @@ export default function PlannerPage() {
       matchesQuickFilter(visit, quickFilter)
     );
   });
+  const dailySchedule = useMemo(() => groupDailySchedule(rows, salesConfig, settings), [rows, salesConfig, settings]);
+  const unavailableInMonth = unavailableDays
+    .filter((item) => item.date.startsWith(`${year}-${String(month).padStart(2, "0")}`))
+    .sort((a, b) => a.date.localeCompare(b.date) || a.salePhuTrach.localeCompare(b.salePhuTrach));
 
   function updateExecution(visit: RouteVisit, patch: Parameters<typeof upsertExecutionRecord>[2]) {
     setRecords((current) => upsertExecutionRecord(current, visit, patch));
@@ -92,6 +202,23 @@ export default function PlannerPage() {
 
   function getRecord(visitId: string) {
     return currentRecords.find((record) => record.visitId === visitId);
+  }
+
+  function addUnavailableDay() {
+    if (!unavailableSale || !unavailableDate) return;
+    const next: SaleUnavailableDay = {
+      id: `${unavailableSale}-${unavailableDate}-${Date.now()}`,
+      salePhuTrach: unavailableSale,
+      date: unavailableDate,
+      reason: unavailableReason,
+      note: unavailableNote.trim() || undefined,
+    };
+    setUnavailableDays((current) => [...current.filter((item) => !(item.salePhuTrach === next.salePhuTrach && item.date === next.date)), next]);
+    setUnavailableNote("");
+  }
+
+  function removeUnavailableDay(id: string) {
+    setUnavailableDays((current) => current.filter((item) => item.id !== id));
   }
 
   function resetDemoExecution() {
@@ -144,6 +271,16 @@ export default function PlannerPage() {
       cell: (row) => <span className="font-bold">{row.status === "CS từ xa" ? "-" : row.routeOrder}</span>,
     },
     {
+      key: "plannedDate",
+      header: "Ngày dự kiến",
+      cell: (row) => (
+        <div>
+          <div className="font-bold">{formatDateValue(row.plannedDate)}</div>
+          <div className="text-xs text-muted">{row.dayName}</div>
+        </div>
+      ),
+    },
+    {
       key: "outlet",
       header: "Điểm bán",
       cell: (row) => (
@@ -183,6 +320,7 @@ export default function PlannerPage() {
         <div>
           {row.clusterId}
           <div className="text-xs text-muted">{row.week} · {row.dayName}</div>
+          <div className="text-xs text-muted">{row.plannedDate}</div>
         </div>
       ),
     },
@@ -272,6 +410,7 @@ export default function PlannerPage() {
   ];
 
   const exportPlan = planWithExecution.map((visit) => ({ ...visit, status: getEffectiveStatus(visit, currentRecords) }));
+  const selectedSaleExportPlan = sale === "all" ? exportPlan : exportPlan.filter((visit) => visit.outlet.salePhuTrach === sale);
 
   return (
     <div>
@@ -285,11 +424,55 @@ export default function PlannerPage() {
         <MetricCard label="Đã hoàn tất" value={summary.completed} hint="Đã đi, có đơn, không có đơn" />
         <MetricCard label="Đi thiếu" value={summary.missed} hint="Chưa đi, không gặp khách, dời lịch" />
         <MetricCard label="Tỷ lệ hoàn thành" value={`${summary.completionRate}%`} />
-        <MetricCard label="Sẽ bù từ tháng trước" value={carryovers.length} hint={`${previousPeriod.month}/${previousPeriod.year}`} />
+        <MetricCard label="Sẽ bù/ưu tiên lại" value={carryovers.length} hint="Từ tháng trước và lịch sử F0.5/F0.3" />
       </div>
       <div className="mb-4 rounded-lg border border-line bg-white p-4 text-sm text-muted shadow-soft">
         Ràng buộc sale/ngày mặc định: tối thiểu <span className="font-bold text-ink">{settings.minVisitsPerSaleDay}</span> điểm, tối đa{" "}
         <span className="font-bold text-ink">{settings.maxVisitsPerSaleDay}</span> điểm. Min/max riêng từng sale chỉnh ở màn Phân vùng sale.
+      </div>
+
+      <div className="mb-4 rounded-lg border border-line bg-white p-4 shadow-soft">
+        <div className="mb-3 flex flex-col gap-1">
+          <div className="font-bold">Ngày sale không đi tuyến</div>
+          <div className="text-sm text-muted">
+            Nếu sale ở văn phòng/kho hoặc nhận chỉ đạo khác, thêm ngày tại đây. Planner sẽ tự dời điểm của sale đó sang ngày làm việc kế tiếp trong tháng; nếu hết ngày trống thì đánh dấu dời lịch để bù.
+          </div>
+        </div>
+        <div className="grid gap-3 md:grid-cols-5">
+          <select className="h-10 rounded-md border border-line px-3 text-sm" value={unavailableSale} onChange={(event) => setUnavailableSale(event.target.value)}>
+            {saleOwners.map((owner) => (
+              <option key={owner} value={owner}>
+                {owner}
+              </option>
+            ))}
+          </select>
+          <input className="h-10 rounded-md border border-line px-3 text-sm" type="date" value={unavailableDate} onChange={(event) => setUnavailableDate(event.target.value)} />
+          <select className="h-10 rounded-md border border-line px-3 text-sm" value={unavailableReason} onChange={(event) => setUnavailableReason(event.target.value as UnavailableReason)}>
+            {unavailableReasons.map((reason) => (
+              <option key={reason} value={reason}>
+                {reason}
+              </option>
+            ))}
+          </select>
+          <input className="h-10 rounded-md border border-line px-3 text-sm" placeholder="Ghi chú nếu có" value={unavailableNote} onChange={(event) => setUnavailableNote(event.target.value)} />
+          <button className="h-10 rounded-md bg-ink px-4 text-sm font-bold text-white disabled:opacity-50" disabled={!unavailableDate} onClick={addUnavailableDay}>
+            Thêm ngày khóa
+          </button>
+        </div>
+        {unavailableInMonth.length ? (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {unavailableInMonth.map((item) => (
+              <button
+                key={item.id}
+                className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800"
+                onClick={() => removeUnavailableDay(item.id)}
+                title="Bấm để xóa ngày khóa"
+              >
+                {formatDateValue(item.date)} · {item.salePhuTrach} · {item.reason} ×
+              </button>
+            ))}
+          </div>
+        ) : null}
       </div>
 
       <div className="mb-4 grid gap-3 rounded-lg border border-line bg-white p-4 shadow-soft md:grid-cols-3 xl:grid-cols-7">
@@ -383,19 +566,85 @@ export default function PlannerPage() {
           <button className="rounded-md border border-line bg-white px-4 py-2 text-sm font-bold text-ink" onClick={() => downloadCsv(`route-plan-filtered-${month}-${year}.csv`, plannerToCsv(rows))}>
             Export theo filter
           </button>
+          <button
+            className="rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-bold text-blue-700"
+            onClick={() => downloadCsv(`route-plan-${sale === "all" ? "tat-ca-sale" : sale}-${month}-${year}.csv`, plannerToCsv(selectedSaleExportPlan))}
+          >
+            Export tháng {sale === "all" ? "tất cả sale" : sale}
+          </button>
           <button className="rounded-md bg-ink px-4 py-2 text-sm font-bold text-white" onClick={() => downloadCsv(`route-plan-all-${month}-${year}.csv`, plannerToCsv(exportPlan))}>
             Export toàn bộ
           </button>
         </div>
       </div>
 
+      <div className="mb-4 flex rounded-lg border border-line bg-white p-1 shadow-soft">
+        {[
+          ["daily", "Lịch từng ngày"],
+          ["table", "Bảng chi tiết"],
+        ].map(([key, label]) => (
+          <button
+            key={key}
+            className={`flex-1 rounded-md px-4 py-2 text-sm font-bold ${viewMode === key ? "bg-ink text-white" : "text-muted hover:bg-slate-50"}`}
+            onClick={() => setViewMode(key as PlannerViewMode)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       <OverloadWarning title="Cụm vượt capacity" items={overloaded.map((item) => `${item.week} - ${item.clusterName}: ${item.visits}/${item.capacity} điểm.`)} />
       <div className="mt-4">
         <OverloadWarning title="Cảnh báo min/max sale/ngày" items={saleDayWarnings} />
       </div>
-      <div className="mt-4">
-        <DataTable columns={tableColumns} rows={rows} rowKey={(row) => row.id} />
-      </div>
+      {viewMode === "daily" ? (
+        <div className="mt-4 grid gap-4 xl:grid-cols-2">
+          {dailySchedule.map((group) => {
+            const underMin = group.visits.length < group.min;
+            const overMax = group.visits.length > group.max;
+            return (
+              <div key={`${group.date}-${group.sale}`} className="rounded-lg border border-line bg-white p-4 shadow-soft">
+                <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="text-xs font-bold uppercase tracking-wide text-muted">{group.sale}</div>
+                    <div className="text-lg font-extrabold text-ink">
+                      {group.dayName}, {formatDateValue(group.date)}
+                    </div>
+                  </div>
+                  <div className={`rounded-full px-3 py-1 text-xs font-bold ${underMin || overMax ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-700"}`}>
+                    {group.visits.length} điểm · min {group.min}/max {group.max}
+                  </div>
+                </div>
+                <div className="grid gap-2">
+                  {group.visits.map((visit) => (
+                    <div key={visit.id} className="grid gap-3 rounded-md bg-slate-50 p-3 text-sm md:grid-cols-[44px_1fr_92px_96px] md:items-center">
+                      <div className="text-lg font-black text-ink">{visit.routeOrder}</div>
+                      <div>
+                        <div className="font-bold text-ink">{visit.outlet.tenDiemBan}</div>
+                        <div className="text-xs text-muted">
+                          {visit.outlet.outletId} · {visit.outlet.phuongXa} · {visit.clusterId}
+                        </div>
+                      </div>
+                      <div className="justify-self-start">
+                        <FrequencyBadge frequency={visit.frequency} />
+                      </div>
+                      <div className="text-xs font-semibold text-muted">{visit.status}</div>
+                      {visit.warning ? <div className="md:col-span-4 rounded-md bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">{visit.warning}</div> : null}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+          {!dailySchedule.length ? (
+            <div className="rounded-lg border border-line bg-white p-6 text-sm text-muted shadow-soft">Không có lịch theo bộ lọc hiện tại.</div>
+          ) : null}
+        </div>
+      ) : (
+        <div className="mt-4">
+          <DataTable columns={tableColumns} rows={rows} rowKey={(row) => row.id} />
+        </div>
+      )}
     </div>
   );
 }

@@ -87,6 +87,7 @@ export const sampleOutletsCsv = Papa.unparse(sampleRows);
 
 export const sampleExecutionHistoryCsv = Papa.unparse([
   {
+    visitId: "2026-5-W1-OUT-011",
     month: 5,
     year: 2026,
     week: "W1",
@@ -99,6 +100,7 @@ export const sampleExecutionHistoryCsv = Papa.unparse([
     carryToNextMonth: "true",
   },
   {
+    visitId: "2026-5-W1-OUT-071",
     month: 5,
     year: 2026,
     week: "W1",
@@ -111,6 +113,7 @@ export const sampleExecutionHistoryCsv = Papa.unparse([
     carryToNextMonth: "false",
   },
   {
+    visitId: "2026-5-W2-OUT-002",
     month: 5,
     year: 2026,
     week: "W2",

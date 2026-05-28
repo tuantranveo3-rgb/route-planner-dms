@@ -107,7 +107,7 @@ export function parseExecutionHistoryCsv(csv: string): { records: RouteExecution
 
     return [
       {
-        visitId: `${year}-${month}-${week}-${row.outletId}`,
+        visitId: row.visitId || `${year}-${month}-${week}-${row.outletId}`,
         outletId: row.outletId,
         month,
         year,
@@ -135,12 +135,19 @@ export function parseExecutionHistoryCsv(csv: string): { records: RouteExecution
 export function plannerToCsv(plan: RouteVisit[]): string {
   return Papa.unparse(
     plan.map((visit) => ({
+      visitId: visit.id,
       thang: `${visit.month}/${visit.year}`,
+      month: visit.month,
+      year: visit.year,
       tuan: visit.week,
+      week: visit.week,
       ngayDi: visit.dayName,
+      ngayDuKien: visit.plannedDate,
       sttDi: visit.routeOrder,
       outletId: visit.outlet.outletId,
       tenDiemBan: visit.outlet.tenDiemBan,
+      salePhuTrach: visit.outlet.salePhuTrach,
+      clusterId: visit.clusterId,
       kenh: visit.outlet.kenh,
       chuoi: visit.outlet.chuoi,
       quanHuyen: visit.outlet.quanHuyen,
@@ -151,8 +158,36 @@ export function plannerToCsv(plan: RouteVisit[]): string {
       doanhSo3Thang: visit.outlet.doanhSo3Thang,
       lyDoUuTien: visit.priorityReason,
       trangThai: visit.status,
+      actualStatus: visit.status,
+      actualVisitDate: "",
+      actualRevenue: "",
+      note: "",
+      carryToNextMonth: "false",
       canhBao: visit.warning ?? "",
     })),
+  );
+}
+
+export function executionHistoryToCsv(records: RouteExecutionRecord[]): string {
+  return Papa.unparse(
+    records
+      .slice()
+      .sort((a, b) => a.year - b.year || a.month - b.month || a.week.localeCompare(b.week) || a.salePhuTrach.localeCompare(b.salePhuTrach))
+      .map((record) => ({
+        visitId: record.visitId,
+        month: record.month,
+        year: record.year,
+        week: record.week,
+        outletId: record.outletId,
+        salePhuTrach: record.salePhuTrach,
+        clusterId: record.clusterId,
+        actualStatus: record.actualStatus,
+        actualVisitDate: record.actualVisitDate ?? "",
+        actualRevenue: record.actualRevenue ?? "",
+        note: record.note ?? "",
+        carryToNextMonth: record.carryToNextMonth ? "true" : "false",
+        updatedAt: record.updatedAt,
+      })),
   );
 }
 

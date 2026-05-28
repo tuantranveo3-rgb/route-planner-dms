@@ -1,6 +1,6 @@
 import type { RouteCluster } from "@/types/cluster";
 import type { EnrichedOutlet, Frequency, Outlet, OutletScore } from "@/types/outlet";
-import type { CarryoverVisit, PlannerSettings, RouteVisit, WeekKey } from "@/types/route";
+import type { CarryoverVisit, PlannerSettings, RouteVisit, SaleStartPoint, WeekKey } from "@/types/route";
 import { formatNumber } from "@/lib/format";
 
 export const DEFAULT_SETTINGS: PlannerSettings = {
@@ -18,6 +18,15 @@ export const DEFAULT_SETTINGS: PlannerSettings = {
 };
 
 const weeks: WeekKey[] = ["W1", "W2", "W3", "W4"];
+const dayIndexByName: Record<string, number> = {
+  "Thứ 2": 1,
+  "Thứ 3": 2,
+  "Thứ 4": 3,
+  "Thứ 5": 4,
+  "Thứ 6": 5,
+  "Thứ 7": 6,
+};
+const dayNameByIndex = ["Chủ nhật", "Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7"];
 const frequencyRank: Record<Frequency, number> = {
   F8: 6,
   F4: 4,
@@ -29,6 +38,10 @@ const frequencyRank: Record<Frequency, number> = {
 
 const clamp = (value: number, min = 0, max = 100) => Math.min(max, Math.max(min, value));
 const round1 = (value: number) => Math.round(value * 10) / 10;
+
+function distanceBetween(a: { toaDoX: number; toaDoY: number }, b: { toaDoX: number; toaDoY: number }) {
+  return Math.hypot(a.toaDoX - b.toaDoX, a.toaDoY - b.toaDoY);
+}
 
 export function calculateSalesScore(doanhSo3Thang: number): number {
   return clamp((doanhSo3Thang / 300_000_000) * 100);
@@ -148,6 +161,7 @@ export function generateMonthlyRoutePlan(
   clusters: RouteCluster[],
   settings: PlannerSettings = DEFAULT_SETTINGS,
   carryovers: CarryoverVisit[] = [],
+  saleStartPoints: SaleStartPoint[] = [],
 ): RouteVisit[] {
   const enriched = enrichOutlets(outlets, settings);
   const clusterById = new Map(clusters.map((cluster) => [cluster.maCum, cluster]));
@@ -159,19 +173,23 @@ export function generateMonthlyRoutePlan(
 
   const sorted = [...enriched].sort((a, b) => frequencyRank[b.frequency] - frequencyRank[a.frequency] || b.totalScore - a.totalScore);
   const outletById = new Map(enriched.map((outlet) => [outlet.outletId, outlet]));
+  const lowFrequencyCarryoverOutlets = new Set<string>();
 
   for (const carryover of carryovers) {
     const outlet = outletById.get(carryover.outletId);
     if (!outlet) continue;
     const cluster = clusterById.get(outlet.cumNho);
     if (!cluster) continue;
+    if (outlet.frequency === "F0.5" || outlet.frequency === "F0.3") {
+      lowFrequencyCarryoverOutlets.add(outlet.outletId);
+    }
     const targetWeeks: WeekKey[] = outlet.frequency === "F4" || outlet.frequency === "F2" ? ["W1", "W2"] : ["W2", "W3"];
     const week = targetWeeks.find((candidate) => {
       const key = `${candidate}-${cluster.maCum}`;
       const used = capacityCounter.get(key) ?? 0;
       return used < (cluster.capacityNgay || settings.defaultDailyCapacity);
     }) ?? targetWeeks[0];
-    const key = `${week}-${cluster.maCum}`;
+    const key = `${week}-${cluster.maCum}-${cluster.ngayDiCoDinh}`;
     const capacity = cluster.capacityNgay || settings.defaultDailyCapacity;
     const used = capacityCounter.get(key) ?? 0;
     const warning = used >= capacity ? "Quá tải bù tuyến, cần thêm ngày đi hoặc tách cụm" : undefined;
@@ -186,6 +204,7 @@ export function generateMonthlyRoutePlan(
       year,
       week,
       dayName: cluster.ngayDiCoDinh,
+      plannedDate: getPlannedDate(year, month, week, cluster.ngayDiCoDinh),
       clusterId: cluster.maCum,
       clusterName: cluster.tenCum,
       routeOrder: 0,
@@ -201,6 +220,9 @@ export function generateMonthlyRoutePlan(
   }
 
   for (const outlet of sorted) {
+    if ((outlet.frequency === "F0.5" || outlet.frequency === "F0.3") && lowFrequencyCarryoverOutlets.has(outlet.outletId)) {
+      continue;
+    }
     const cluster = clusterById.get(outlet.cumNho);
     if (!cluster) continue;
     const targetWeeks = getWeeksForOutlet(outlet, f2CounterByCluster, f1CounterByCluster);
@@ -209,7 +231,8 @@ export function generateMonthlyRoutePlan(
       const outletWeekKey = `${week}-${outlet.outletId}`;
       const outletWeekSequence = (outletWeekCounter.get(outletWeekKey) ?? 0) + 1;
       outletWeekCounter.set(outletWeekKey, outletWeekSequence);
-      const key = `${week}-${cluster.maCum}`;
+      const plannedDayName = getPlannedDayName(cluster.ngayDiCoDinh, outletWeekSequence);
+      const key = `${week}-${cluster.maCum}-${plannedDayName}`;
       const capacity = cluster.capacityNgay || settings.defaultDailyCapacity;
       const used = capacityCounter.get(key) ?? 0;
       const isFlexibleLowFrequency = outlet.frequency === "F0.5" || outlet.frequency === "F0.3";
@@ -225,7 +248,8 @@ export function generateMonthlyRoutePlan(
         month,
         year,
         week,
-        dayName: cluster.ngayDiCoDinh,
+        dayName: plannedDayName,
+        plannedDate: getPlannedDate(year, month, week, plannedDayName),
         clusterId: cluster.maCum,
         clusterName: cluster.tenCum,
         routeOrder: 0,
@@ -238,7 +262,7 @@ export function generateMonthlyRoutePlan(
     }
   }
 
-  return assignDailyOrders(visits, clusters);
+  return assignDailyOrders(visits, clusters, saleStartPoints);
 }
 
 function getWeeksForOutlet(
@@ -262,12 +286,64 @@ function getWeeksForOutlet(
   return ["W4"];
 }
 
-function assignDailyOrders(visits: RouteVisit[], clusters: RouteCluster[]): RouteVisit[] {
+function getPlannedDayName(baseDayName: string, sequence: number): string {
+  if (sequence <= 1) return baseDayName;
+  const baseIndex = dayIndexByName[baseDayName] ?? 1;
+  const nextIndex = Math.min(6, baseIndex + 2 * (sequence - 1));
+  return dayNameByIndex[nextIndex];
+}
+
+export function getPlannedDate(year: number, month: number, week: WeekKey, dayName: string): string {
+  const weekIndex = weeks.indexOf(week);
+  const startDay = weekIndex * 7 + 1;
+  const targetDay = dayIndexByName[dayName] ?? 1;
+  const lastDay = new Date(year, month, 0).getDate();
+
+  for (let day = startDay; day <= Math.min(startDay + 6, lastDay); day += 1) {
+    const date = new Date(year, month - 1, day);
+    if (date.getDay() === targetDay) return toDateInputValue(date);
+  }
+
+  return toDateInputValue(new Date(year, month - 1, Math.min(startDay, lastDay)));
+}
+
+function toDateInputValue(date: Date): string {
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function orderVisitsFromStart(group: RouteVisit[], startPoint?: SaleStartPoint): RouteVisit[] {
+  const remaining = [...group];
+  const ordered: RouteVisit[] = [];
+  let cursor = startPoint ? { toaDoX: startPoint.toaDoX, toaDoY: startPoint.toaDoY } : { toaDoX: group[0].outlet.toaDoX, toaDoY: group[0].outlet.toaDoY };
+
+  while (remaining.length) {
+    remaining.sort((a, b) => {
+      const distanceDiff = distanceBetween(cursor, a.outlet) - distanceBetween(cursor, b.outlet);
+      if (Math.abs(distanceDiff) > 0.001) return distanceDiff;
+      const frequencyDiff = frequencyRank[b.frequency] - frequencyRank[a.frequency];
+      if (frequencyDiff !== 0) return frequencyDiff;
+      return b.outlet.totalScore - a.outlet.totalScore;
+    });
+    const next = remaining.shift();
+    if (!next) break;
+    ordered.push(next);
+    cursor = { toaDoX: next.outlet.toaDoX, toaDoY: next.outlet.toaDoY };
+  }
+
+  return ordered;
+}
+
+function assignDailyOrders(visits: RouteVisit[], clusters: RouteCluster[], saleStartPoints: SaleStartPoint[] = []): RouteVisit[] {
   const clusterById = new Map(clusters.map((cluster) => [cluster.maCum, cluster]));
+  const defaultStartBySale = new Map(saleStartPoints.filter((point) => !point.date).map((point) => [point.salePhuTrach, point]));
+  const dateStartBySale = new Map(saleStartPoints.filter((point) => point.date).map((point) => [`${point.date}-${point.salePhuTrach}`, point]));
   const grouped = new Map<string, RouteVisit[]>();
 
   for (const visit of visits) {
-    const key = `${visit.week}-${visit.clusterId}`;
+    const key = `${visit.plannedDate}-${visit.outlet.salePhuTrach}`;
     grouped.set(key, [...(grouped.get(key) ?? []), visit]);
   }
 
@@ -278,11 +354,12 @@ function assignDailyOrders(visits: RouteVisit[], clusters: RouteCluster[]): Rout
       ordered.push(...group);
       continue;
     }
-    const outletOrder = new Map(optimizeDailyRoute(group.map((visit) => visit.outlet), cluster).map((outlet, index) => [outlet.outletId, index + 1]));
-    ordered.push(...group.map((visit) => ({ ...visit, routeOrder: outletOrder.get(visit.outlet.outletId) ?? 999 })));
+    const startPoint = dateStartBySale.get(`${group[0].plannedDate}-${group[0].outlet.salePhuTrach}`) ?? defaultStartBySale.get(group[0].outlet.salePhuTrach);
+    const orderedGroup = startPoint ? orderVisitsFromStart(group, startPoint) : optimizeDailyRoute(group.map((visit) => visit.outlet), cluster).map((outlet) => group.find((visit) => visit.outlet.outletId === outlet.outletId)).filter((visit): visit is RouteVisit => Boolean(visit));
+    ordered.push(...orderedGroup.map((visit, index) => ({ ...visit, routeOrder: index + 1 })));
   }
 
-  return ordered.sort((a, b) => weeks.indexOf(a.week) - weeks.indexOf(b.week) || a.dayName.localeCompare(b.dayName) || a.routeOrder - b.routeOrder);
+  return ordered.sort((a, b) => a.plannedDate.localeCompare(b.plannedDate) || a.routeOrder - b.routeOrder);
 }
 
 export function getOverloadedClusters(plan: RouteVisit[], clusters: RouteCluster[]) {
@@ -290,7 +367,7 @@ export function getOverloadedClusters(plan: RouteVisit[], clusters: RouteCluster
   const counts = new Map<string, { week: WeekKey; clusterId: string; clusterName: string; visits: number; capacity: number }>();
 
   for (const visit of plan.filter((item) => item.status !== "CS từ xa")) {
-    const key = `${visit.week}-${visit.clusterId}`;
+    const key = `${visit.week}-${visit.clusterId}-${visit.dayName}`;
     const existing = counts.get(key) ?? {
       week: visit.week,
       clusterId: visit.clusterId,
