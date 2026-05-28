@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { DataTable, type Column } from "@/components/DataTable";
 import { FrequencyBadge } from "@/components/FrequencyBadge";
 import { PageHeader } from "@/components/PageHeader";
+import { formatNumber } from "@/lib/format";
 import { enrichOutlets } from "@/lib/route-logic";
 import { seedOutlets } from "@/lib/seed-data";
 import type { EnrichedOutlet, Frequency } from "@/types/outlet";
@@ -29,7 +30,7 @@ export default function OutletsPage() {
     { key: "risk", header: "Rủi ro", cell: (row) => row.riskScore },
     { key: "total", header: "Tổng điểm", cell: (row) => <span className="font-bold">{row.totalScore}</span> },
     { key: "frequency", header: "F đề xuất", cell: (row) => <FrequencyBadge frequency={row.frequency} /> },
-    { key: "visits", header: "Lượt/tháng", cell: (row) => row.monthlyVisits },
+    { key: "visits", header: "Lượt/tháng", cell: (row) => formatNumber(row.monthlyVisits) },
     { key: "reason", header: "Lý do", cell: (row) => <span className="text-sm text-slate-600">{row.reason}</span> },
   ];
 

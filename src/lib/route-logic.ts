@@ -1,6 +1,7 @@
 import type { RouteCluster } from "@/types/cluster";
 import type { EnrichedOutlet, Frequency, Outlet, OutletScore } from "@/types/outlet";
 import type { CarryoverVisit, PlannerSettings, RouteVisit, WeekKey } from "@/types/route";
+import { formatNumber } from "@/lib/format";
 
 export const DEFAULT_SETTINGS: PlannerSettings = {
   weights: {
@@ -126,7 +127,7 @@ function buildFrequencyReason(outlet: Outlet, score: OutletScore): string {
     score.distanceScore <= 40 ? "xa tâm cụm" : "",
   ].filter(Boolean);
   const driverText = drivers.length ? drivers.join(", ") : "điểm tổng ở mức duy trì";
-  return `${score.frequency}: ${driverText}; cụm ${outlet.cumNho}, ${score.monthlyVisits} lượt/tháng.`;
+  return `${score.frequency}: ${driverText}; cụm ${outlet.cumNho}, ${formatNumber(score.monthlyVisits)} lượt/tháng.`;
 }
 
 export function optimizeDailyRoute(outlets: EnrichedOutlet[], cluster: RouteCluster): EnrichedOutlet[] {

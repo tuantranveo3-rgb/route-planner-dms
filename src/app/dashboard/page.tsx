@@ -2,6 +2,7 @@ import { FrequencyBadge } from "@/components/FrequencyBadge";
 import { MetricCard } from "@/components/MetricCard";
 import { OverloadWarning } from "@/components/OverloadWarning";
 import { PageHeader } from "@/components/PageHeader";
+import { formatNumber } from "@/lib/format";
 import { clusters, salesTerritories, seedOutlets } from "@/lib/seed-data";
 import { DEFAULT_SETTINGS, enrichOutlets, generateMonthlyRoutePlan, getOverloadedClusters } from "@/lib/route-logic";
 import type { Frequency } from "@/types/outlet";
@@ -17,7 +18,7 @@ const counts = outlets.reduce<Record<Frequency, number>>(
   },
   { F8: 0, F4: 0, F2: 0, F1: 0, "F0.5": 0, "F0.3": 0 },
 );
-const monthlyVisits = outlets.reduce((sum, outlet) => sum + outlet.monthlyVisits, 0);
+const monthlyVisits = Number(outlets.reduce((sum, outlet) => sum + outlet.monthlyVisits, 0).toFixed(1));
 const averageDailyVisits = Number((monthlyVisits / DEFAULT_SETTINGS.workingDaysPerMonth).toFixed(1));
 const overloaded = getOverloadedClusters(plan, clusters);
 
@@ -31,8 +32,8 @@ export default function DashboardPage() {
 
       <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <MetricCard label="Tổng điểm bán" value={outlets.length} hint="Dữ liệu seed TP.HCM" />
-        <MetricCard label="Tổng lượt ghé/tháng" value={monthlyVisits} hint="F8=8, F4=4, F2=2, F1=1, F0.5/F0.3 linh hoạt" />
-        <MetricCard label="Lượt ghé/ngày bình quân" value={averageDailyVisits} hint={`${DEFAULT_SETTINGS.workingDaysPerMonth} ngày làm việc/tháng`} />
+        <MetricCard label="Tổng lượt ghé/tháng" value={formatNumber(monthlyVisits)} hint="F8=8, F4=4, F2=2, F1=1, F0.5/F0.3 linh hoạt" />
+        <MetricCard label="Lượt ghé/ngày bình quân" value={formatNumber(averageDailyVisits)} hint={`${DEFAULT_SETTINGS.workingDaysPerMonth} ngày làm việc/tháng`} />
         <MetricCard label="Ngưỡng cảnh báo" value="25 điểm/ngày" hint={averageDailyVisits > 25 ? "Đang quá tải" : "Đang trong ngưỡng"} />
         <MetricCard label="Cụm quá tải" value={overloaded.length} hint="Theo capacity cụm/ngày" />
       </div>
@@ -81,12 +82,12 @@ export default function DashboardPage() {
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {clusters.map((cluster) => {
             const clusterOutlets = outlets.filter((outlet) => outlet.cumNho === cluster.maCum);
-            const clusterVisits = clusterOutlets.reduce((sum, outlet) => sum + outlet.monthlyVisits, 0);
+            const clusterVisits = Number(clusterOutlets.reduce((sum, outlet) => sum + outlet.monthlyVisits, 0).toFixed(1));
             return (
               <div key={cluster.maCum} className="rounded-md border border-line p-3">
                 <div className="font-bold">{cluster.maCum} - {cluster.tenCum}</div>
                 <div className="mt-1 text-sm text-muted">{cluster.danhSachPhuongXa.join(", ")}</div>
-                <div className="mt-2 text-sm">{clusterOutlets.length} điểm bán, {clusterVisits} lượt/tháng, ngày cố định {cluster.ngayDiCoDinh}</div>
+                <div className="mt-2 text-sm">{clusterOutlets.length} điểm bán, {formatNumber(clusterVisits)} lượt/tháng, ngày cố định {cluster.ngayDiCoDinh}</div>
               </div>
             );
           })}
