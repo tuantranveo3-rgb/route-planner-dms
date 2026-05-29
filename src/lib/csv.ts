@@ -1,7 +1,9 @@
 import Papa from "papaparse";
+import { executionStatuses } from "@/lib/route-execution";
+import { clusters as defaultClusters } from "@/lib/seed-data";
+import type { RouteCluster } from "@/types/cluster";
 import type { Outlet } from "@/types/outlet";
 import type { RouteExecutionRecord, RouteVisit, VisitStatus, WeekKey } from "@/types/route";
-import { executionStatuses } from "@/lib/route-execution";
 
 export const requiredOutletColumns: Array<keyof Outlet> = [
   "outletId",
@@ -18,48 +20,79 @@ export const requiredOutletColumns: Array<keyof Outlet> = [
   "soDon3Thang",
   "tiemNang",
   "ruiRoMatKhach",
-  "khoangCachTamCumKm",
   "toaDoX",
   "toaDoY",
   "ghiChu",
 ];
 
+export const optionalOutletColumns: Array<keyof Outlet> = ["khoangCachTamCumKm"];
+
 export function validateOutletColumns(fields: string[]): string[] {
   return requiredOutletColumns.filter((column) => !fields.includes(column));
 }
 
-export function parseOutletCsv(csv: string): { outlets: Outlet[]; errors: string[] } {
+function roundDistance(value: number) {
+  return Number(value.toFixed(1));
+}
+
+function calculateDistanceToClusterCenter(toaDoX: number, toaDoY: number, cluster?: RouteCluster) {
+  if (!cluster) return Number.NaN;
+  const dx = toaDoX - cluster.toaDoTamX;
+  const dy = toaDoY - cluster.toaDoTamY;
+  return roundDistance(Math.sqrt(dx * dx + dy * dy));
+}
+
+export function parseOutletCsv(csv: string, routeClusters: RouteCluster[] = defaultClusters): { outlets: Outlet[]; errors: string[] } {
   const result = Papa.parse<Record<string, string>>(csv, { header: true, skipEmptyLines: true });
-  const missingColumns = validateOutletColumns(result.meta.fields ?? []);
+  const fields = result.meta.fields ?? [];
+  const missingColumns = validateOutletColumns(fields);
   if (missingColumns.length) {
-    return { outlets: [], errors: [`Thiếu cột bắt buộc: ${missingColumns.join(", ")}`] };
+    return { outlets: [], errors: [`Thiếu cột bắt buộc: ${missingColumns.join(", ")}. Cột khoangCachTamCumKm không bắt buộc, app sẽ tự tính nếu có tọa độ.`] };
   }
 
-  const outlets: Outlet[] = result.data.map((row) => ({
-    outletId: row.outletId,
-    tenDiemBan: row.tenDiemBan,
-    kenh: row.kenh === "MT" ? "MT" : "GT",
-    chuoi: row.chuoi,
-    tinhThanh: row.tinhThanh,
-    quanHuyen: row.quanHuyen,
-    phuongXa: row.phuongXa,
-    diaChi: row.diaChi,
-    cumNho: row.cumNho,
-    salePhuTrach: row.salePhuTrach,
-    doanhSo3Thang: Number(row.doanhSo3Thang),
-    soDon3Thang: Number(row.soDon3Thang),
-    tiemNang: Number(row.tiemNang),
-    ruiRoMatKhach: Number(row.ruiRoMatKhach),
-    khoangCachTamCumKm: Number(row.khoangCachTamCumKm),
-    toaDoX: Number(row.toaDoX),
-    toaDoY: Number(row.toaDoY),
-    ghiChu: row.ghiChu,
-  }));
+  const clusterById = new Map(routeClusters.map((cluster) => [cluster.maCum, cluster]));
+  const hasDistanceColumn = fields.includes("khoangCachTamCumKm");
+  const errors: string[] = [];
+
+  const outlets: Outlet[] = result.data.map((row, index) => {
+    const line = index + 2;
+    const toaDoX = Number(row.toaDoX);
+    const toaDoY = Number(row.toaDoY);
+    const importedDistance = hasDistanceColumn && row.khoangCachTamCumKm?.trim() ? Number(row.khoangCachTamCumKm) : Number.NaN;
+    const cluster = clusterById.get(row.cumNho);
+    const calculatedDistance = calculateDistanceToClusterCenter(toaDoX, toaDoY, cluster);
+    const khoangCachTamCumKm = Number.isNaN(importedDistance) ? calculatedDistance : importedDistance;
+
+    if (!cluster) errors.push(`Dòng ${line}: cumNho "${row.cumNho}" chưa có trong danh sách cụm, không tự tính được khoảng cách tâm cụm.`);
+    if (Number.isNaN(toaDoX) || Number.isNaN(toaDoY)) errors.push(`Dòng ${line}: toaDoX/toaDoY không hợp lệ.`);
+    if (Number.isNaN(khoangCachTamCumKm)) errors.push(`Dòng ${line}: khoangCachTamCumKm trống và không tự tính được từ tọa độ/tâm cụm.`);
+
+    return {
+      outletId: row.outletId,
+      tenDiemBan: row.tenDiemBan,
+      kenh: row.kenh === "MT" ? "MT" : "GT",
+      chuoi: row.chuoi,
+      tinhThanh: row.tinhThanh,
+      quanHuyen: row.quanHuyen,
+      phuongXa: row.phuongXa,
+      diaChi: row.diaChi,
+      cumNho: row.cumNho,
+      salePhuTrach: row.salePhuTrach,
+      doanhSo3Thang: Number(row.doanhSo3Thang),
+      soDon3Thang: Number(row.soDon3Thang),
+      tiemNang: Number(row.tiemNang),
+      ruiRoMatKhach: Number(row.ruiRoMatKhach),
+      khoangCachTamCumKm,
+      toaDoX,
+      toaDoY,
+      ghiChu: row.ghiChu,
+    };
+  });
 
   const invalid = outlets.filter((outlet) => !outlet.outletId || Number.isNaN(outlet.doanhSo3Thang));
   return {
     outlets,
-    errors: invalid.length ? [`Có ${invalid.length} dòng thiếu outletId hoặc số liệu không hợp lệ.`] : [],
+    errors: [...errors, ...(invalid.length ? [`Có ${invalid.length} dòng thiếu outletId hoặc số liệu không hợp lệ.`] : [])],
   };
 }
 

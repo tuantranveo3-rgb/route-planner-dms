@@ -1,5 +1,5 @@
-outletId,tenDiemBan,kenh,chuoi,tinhThanh,quanHuyen,phuongXa,diaChi,cumNho,salePhuTrach,doanhSo3Thang,soDon3Thang,tiemNang,ruiRoMatKhach,khoangCachTamCumKm,toaDoX,toaDoY,ghiChu
-CSV-001,Hasaki Bến Nghé CSV,MT,Hasaki,TP.HCM,Quận 1,Bến Nghé,12 Đồng Khởi,Q1-A,An Nguyễn,285000000,34,5,4,1.5,10.2,10.8,Khách trọng điểm
-CSV-002,C2 Đa Kao CSV,GT,C2 độc lập,TP.HCM,Quận 1,Đa Kao,22 Nguyễn Đình Chiểu,Q1-B,Bình Trần,135000000,18,4,3,4.2,14.5,12.4,Khách tăng trưởng
-CSV-003,Guardian Võ Thị Sáu CSV,MT,Guardian,TP.HCM,Quận 3,Võ Thị Sáu,18 Võ Văn Tần,Q3-A,Chi Lê,90000000,11,3,2,8.4,18.8,13.5,Khách duy trì
-CSV-004,Minimart An Lạc CSV,GT,Minimart gia đình,TP.HCM,Bình Tân,An Lạc,9 Kinh Dương Vương,BTA-A,Dung Phạm,26000000,4,2,1,24,41.2,19.4,CS từ xa nếu hết capacity
+outletId,tenDiemBan,kenh,chuoi,tinhThanh,quanHuyen,phuongXa,diaChi,cumNho,salePhuTrach,doanhSo3Thang,soDon3Thang,tiemNang,ruiRoMatKhach,toaDoX,toaDoY,ghiChu
+CSV-001,Hasaki Bến Nghé CSV,MT,Hasaki,TP.HCM,Quận 1,Bến Nghé,12 Đồng Khởi,Q1-A,An Nguyễn,285000000,34,5,4,10.2,10.8,Khách trọng điểm
+CSV-002,C2 Đa Kao CSV,GT,C2 độc lập,TP.HCM,Quận 1,Đa Kao,22 Nguyễn Đình Chiểu,Q1-B,Bình Trần,135000000,18,4,3,14.5,12.4,Khách tăng trưởng
+CSV-003,Guardian Võ Thị Sáu CSV,MT,Guardian,TP.HCM,Quận 3,Võ Thị Sáu,18 Võ Văn Tần,Q3-A,Chi Lê,90000000,11,3,2,18.8,13.5,Khách duy trì
+CSV-004,Minimart An Lạc CSV,GT,Minimart gia đình,TP.HCM,Bình Tân,An Lạc,9 Kinh Dương Vương,BTA-A,Dung Phạm,26000000,4,2,1,41.2,19.4,CS từ xa nếu hết capacity

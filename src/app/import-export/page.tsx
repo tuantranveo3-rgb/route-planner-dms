@@ -164,6 +164,9 @@ export default function ImportExportPage() {
           <span className="font-semibold">salePhuTrach</span>: tên sale phụ trách điểm bán. Nếu file import có sale mới, app tự tạo thẻ sale đó trong Phân vùng sale và gợi ý quận/cụm theo file.
         </div>
         <div>
+          <span className="font-semibold">khoangCachTamCumKm</span>: không bắt buộc. Nếu file không có cột này hoặc để trống, app tự tính từ <span className="font-semibold">toaDoX/toaDoY</span> của điểm bán so với tâm cụm trong <span className="font-semibold">cumNho</span>.
+        </div>
+        <div>
           <span className="font-semibold">doanhSo3Thang</span>: tổng doanh số của điểm bán trong 3 tháng gần nhất, nhập dạng số VND không dấu phẩy. Ví dụ: 285000000.
         </div>
         <div>

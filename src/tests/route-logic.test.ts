@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { clusters, salesTerritories, seedOutlets } from "@/lib/seed-data";
 import { findUnassignedClusters, summarizeTerritories } from "@/lib/territory-logic";
-import { parseExecutionHistoryCsv } from "@/lib/csv";
+import { parseExecutionHistoryCsv, parseOutletCsv } from "@/lib/csv";
 import { buildCarryoversForNextMonth, buildLowFrequencyHistoryCarryovers, summarizeExecution, upsertExecutionRecord } from "@/lib/route-execution";
 import {
   assignFrequency,
@@ -160,6 +160,17 @@ describe("route logic", () => {
       actualStatus: "Dời lịch",
       carryToNextMonth: true,
     });
+  });
+
+  it("parses outlet csv without distance and auto-calculates distance from cluster center", () => {
+    const csv = [
+      "outletId,tenDiemBan,kenh,chuoi,tinhThanh,quanHuyen,phuongXa,diaChi,cumNho,salePhuTrach,doanhSo3Thang,soDon3Thang,tiemNang,ruiRoMatKhach,toaDoX,toaDoY,ghiChu",
+      "CSV-X,Outlet X,GT,C2,TP.HCM,Quan 1,Ben Nghe,Test,Q1-A,Sale A,100000000,10,3,2,13,14,Auto distance",
+    ].join("\n");
+    const parsed = parseOutletCsv(csv, clusters);
+
+    expect(parsed.errors).toHaveLength(0);
+    expect(parsed.outlets[0].khoangCachTamCumKm).toBe(5);
   });
 
   it("covers every route cluster with a sales territory", () => {
