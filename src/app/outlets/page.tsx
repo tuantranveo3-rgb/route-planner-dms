@@ -1,18 +1,23 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { DataTable, type Column } from "@/components/DataTable";
 import { FrequencyBadge } from "@/components/FrequencyBadge";
 import { PageHeader } from "@/components/PageHeader";
 import { formatNumber } from "@/lib/format";
+import { loadOutlets } from "@/lib/outlet-storage";
 import { enrichOutlets } from "@/lib/route-logic";
 import { seedOutlets } from "@/lib/seed-data";
-import type { EnrichedOutlet, Frequency } from "@/types/outlet";
+import type { EnrichedOutlet, Frequency, Outlet } from "@/types/outlet";
 
 export default function OutletsPage() {
   const [search, setSearch] = useState("");
   const [frequency, setFrequency] = useState<"all" | Frequency>("all");
-  const outlets = useMemo(() => enrichOutlets(seedOutlets), []);
+  const [sourceOutlets, setSourceOutlets] = useState<Outlet[]>(seedOutlets);
+  useEffect(() => {
+    setSourceOutlets(loadOutlets());
+  }, []);
+  const outlets = useMemo(() => enrichOutlets(sourceOutlets), [sourceOutlets]);
   const rows = outlets.filter((outlet) => {
     const matchesSearch = `${outlet.tenDiemBan} ${outlet.outletId} ${outlet.cumNho} ${outlet.salePhuTrach}`.toLowerCase().includes(search.toLowerCase());
     const matchesFrequency = frequency === "all" || outlet.frequency === frequency;

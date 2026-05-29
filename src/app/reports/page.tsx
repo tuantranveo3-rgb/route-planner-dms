@@ -7,11 +7,13 @@ import { MetricCard } from "@/components/MetricCard";
 import { PageHeader } from "@/components/PageHeader";
 import { buildCarryoversForNextMonth, buildLowFrequencyHistoryCarryovers, EXECUTION_STORAGE_KEY, recordsForPeriod, summarizeExecution } from "@/lib/route-execution";
 import { generateMonthlyRoutePlan } from "@/lib/route-logic";
-import { clusters, saleOwners, seedOutlets } from "@/lib/seed-data";
+import { clusters, saleOwners, salesTerritories, seedOutlets } from "@/lib/seed-data";
+import { loadSalesConfig } from "@/lib/sales-config";
 import { loadPlannerSettings } from "@/lib/settings-storage";
 import type { Frequency } from "@/types/outlet";
 import type { PlannerSettings, RouteExecutionRecord, RouteVisit } from "@/types/route";
 import { DEFAULT_SETTINGS } from "@/lib/route-logic";
+import type { SalesTerritory } from "@/types/territory";
 
 type SaleReportRow = {
   sale: string;
@@ -38,15 +40,17 @@ export default function ReportsPage() {
   const [sale, setSale] = useState("all");
   const [records, setRecords] = useState<RouteExecutionRecord[]>([]);
   const [settings, setSettings] = useState<PlannerSettings>(DEFAULT_SETTINGS);
+  const [salesConfig, setSalesConfig] = useState<SalesTerritory[]>(salesTerritories);
 
   useEffect(() => {
     const raw = window.localStorage.getItem(EXECUTION_STORAGE_KEY);
     if (raw) setRecords(JSON.parse(raw) as RouteExecutionRecord[]);
     setSettings(loadPlannerSettings());
+    setSalesConfig(loadSalesConfig());
   }, []);
 
   const previousPeriod = getPreviousPeriod(month, year);
-  const previousPlan = useMemo(() => generateMonthlyRoutePlan(previousPeriod.month, previousPeriod.year, seedOutlets, clusters, settings), [previousPeriod.month, previousPeriod.year, settings]);
+  const previousPlan = useMemo(() => generateMonthlyRoutePlan(previousPeriod.month, previousPeriod.year, seedOutlets, clusters, settings, [], [], salesConfig), [previousPeriod.month, previousPeriod.year, settings, salesConfig]);
   const previousRecords = useMemo(() => recordsForPeriod(records, previousPeriod.month, previousPeriod.year), [records, previousPeriod.month, previousPeriod.year]);
   const carryovers = useMemo(() => {
     const previousCarryovers = buildCarryoversForNextMonth(previousPlan, previousRecords);
@@ -54,7 +58,7 @@ export default function ReportsPage() {
     const byOutlet = new Map([...previousCarryovers, ...historyCarryovers].map((item) => [item.outletId, item]));
     return [...byOutlet.values()];
   }, [previousPlan, previousRecords, records, month, year, settings]);
-  const plan = useMemo(() => generateMonthlyRoutePlan(month, year, seedOutlets, clusters, settings, carryovers), [month, year, settings, carryovers]);
+  const plan = useMemo(() => generateMonthlyRoutePlan(month, year, seedOutlets, clusters, settings, carryovers, [], salesConfig), [month, year, settings, carryovers, salesConfig]);
   const currentRecords = useMemo(() => recordsForPeriod(records, month, year), [records, month, year]);
   const filteredPlan = sale === "all" ? plan : plan.filter((visit) => visit.outlet.salePhuTrach === sale);
   const summary = summarizeExecution(filteredPlan, currentRecords);

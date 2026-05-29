@@ -66,6 +66,26 @@ describe("route logic", () => {
     expect(new Set(plan.filter((visit) => visit.outlet.outletId === f4Outlet).map((visit) => visit.week))).toEqual(new Set(["W1", "W2", "W3", "W4"]));
   });
 
+  it("uses sale-specific cluster day plans before cluster default days", () => {
+    const customTerritories = [
+      {
+        salePhuTrach: "An Nguyễn",
+        khuVucPhuTrach: ["Quận 1"],
+        cumNhoPhuTrach: ["Q1-A"],
+        saleBackup: "Bình Trần",
+        ngayDiUuTien: ["Thứ 5"],
+        lichTheoNgay: [{ dayName: "Thứ 5", clusterIds: ["Q1-A"] }],
+        minVisitsPerDay: 6,
+        maxVisitsPerDay: 15,
+        ghiChu: "",
+      },
+    ];
+    const outlet = { ...strongOutlet, doanhSo3Thang: 70_000_000, soDon3Thang: 6, tiemNang: 2, ruiRoMatKhach: 1 };
+    const plan = generateMonthlyRoutePlan(5, 2026, [outlet], clusters, undefined, [], [], customTerritories);
+
+    expect(plan.some((visit) => visit.dayName === "Thứ 5")).toBe(true);
+  });
+
   it("builds carryover items from missed execution records and injects them into next month", () => {
     const plan = generateMonthlyRoutePlan(5, 2026, seedOutlets, clusters);
     const visit = plan.find((item) => item.frequency === "F4");

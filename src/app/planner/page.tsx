@@ -7,6 +7,7 @@ import { MetricCard } from "@/components/MetricCard";
 import { OverloadWarning } from "@/components/OverloadWarning";
 import { PageHeader } from "@/components/PageHeader";
 import { downloadCsv, plannerToCsv } from "@/lib/csv";
+import { loadOutlets } from "@/lib/outlet-storage";
 import {
   buildCarryoversForNextMonth,
   buildLowFrequencyHistoryCarryovers,
@@ -19,10 +20,10 @@ import {
   upsertExecutionRecord,
 } from "@/lib/route-execution";
 import { generateMonthlyRoutePlan, getOverloadedClusters } from "@/lib/route-logic";
-import { clusters, saleOwners, saleStartPoints, seedOutlets } from "@/lib/seed-data";
+import { clusters, saleStartPoints, seedOutlets } from "@/lib/seed-data";
 import { getSaleLimits, loadSalesConfig } from "@/lib/sales-config";
 import { loadPlannerSettings } from "@/lib/settings-storage";
-import type { Frequency } from "@/types/outlet";
+import type { Frequency, Outlet } from "@/types/outlet";
 import type { PlannerSettings, RouteExecutionRecord, RouteVisit, SaleUnavailableDay, VisitStatus, WeekKey } from "@/types/route";
 import { DEFAULT_SETTINGS } from "@/lib/route-logic";
 import type { SalesTerritory } from "@/types/territory";
@@ -133,8 +134,9 @@ export default function PlannerPage() {
   const [records, setRecords] = useState<RouteExecutionRecord[]>([]);
   const [settings, setSettings] = useState<PlannerSettings>(DEFAULT_SETTINGS);
   const [salesConfig, setSalesConfig] = useState<SalesTerritory[]>([]);
+  const [outlets, setOutlets] = useState<Outlet[]>(seedOutlets);
   const [unavailableDays, setUnavailableDays] = useState<SaleUnavailableDay[]>([]);
-  const [unavailableSale, setUnavailableSale] = useState(saleOwners[0] ?? "");
+  const [unavailableSale, setUnavailableSale] = useState("");
   const [unavailableDate, setUnavailableDate] = useState("");
   const [unavailableReason, setUnavailableReason] = useState<UnavailableReason>("Ở văn phòng");
   const [unavailableNote, setUnavailableNote] = useState("");
@@ -146,6 +148,9 @@ export default function PlannerPage() {
     if (unavailableRaw) setUnavailableDays(JSON.parse(unavailableRaw) as SaleUnavailableDay[]);
     setSettings(loadPlannerSettings());
     setSalesConfig(loadSalesConfig());
+    const storedOutlets = loadOutlets();
+    setOutlets(storedOutlets);
+    setUnavailableSale(Array.from(new Set(storedOutlets.map((outlet) => outlet.salePhuTrach)))[0] ?? "");
   }, []);
 
   useEffect(() => {
@@ -157,9 +162,10 @@ export default function PlannerPage() {
   }, [unavailableDays]);
 
   const previousPeriod = getPreviousPeriod(month, year);
+  const saleOptions = useMemo(() => Array.from(new Set(outlets.map((outlet) => outlet.salePhuTrach))).filter(Boolean), [outlets]);
   const previousBasePlan = useMemo(
-    () => generateMonthlyRoutePlan(previousPeriod.month, previousPeriod.year, seedOutlets, clusters, settings, [], saleStartPoints),
-    [previousPeriod.month, previousPeriod.year, settings],
+    () => generateMonthlyRoutePlan(previousPeriod.month, previousPeriod.year, outlets, clusters, settings, [], saleStartPoints, salesConfig),
+    [previousPeriod.month, previousPeriod.year, outlets, settings, salesConfig],
   );
   const previousRecords = useMemo(
     () => recordsForPeriod(records, previousPeriod.month, previousPeriod.year),
@@ -167,11 +173,11 @@ export default function PlannerPage() {
   );
   const carryovers = useMemo(() => {
     const previousCarryovers = buildCarryoversForNextMonth(previousBasePlan, previousRecords);
-    const historyCarryovers = buildLowFrequencyHistoryCarryovers(seedOutlets, records, month, year, settings);
+    const historyCarryovers = buildLowFrequencyHistoryCarryovers(outlets, records, month, year, settings);
     const byOutlet = new Map([...previousCarryovers, ...historyCarryovers].map((item) => [item.outletId, item]));
     return [...byOutlet.values()];
-  }, [previousBasePlan, previousRecords, records, month, year, settings]);
-  const plan = useMemo(() => generateMonthlyRoutePlan(month, year, seedOutlets, clusters, settings, carryovers, saleStartPoints), [month, year, settings, carryovers]);
+  }, [previousBasePlan, previousRecords, records, month, year, settings, outlets]);
+  const plan = useMemo(() => generateMonthlyRoutePlan(month, year, outlets, clusters, settings, carryovers, saleStartPoints, salesConfig), [month, year, outlets, settings, carryovers, salesConfig]);
   const scheduledPlan = useMemo(() => applyUnavailableDays(plan, unavailableDays, month, year), [plan, unavailableDays, month, year]);
   const currentRecords = useMemo(() => recordsForPeriod(records, month, year), [records, month, year]);
   const planWithExecution = useMemo(
@@ -440,7 +446,7 @@ export default function PlannerPage() {
         </div>
         <div className="grid gap-3 md:grid-cols-5">
           <select className="h-10 rounded-md border border-line px-3 text-sm" value={unavailableSale} onChange={(event) => setUnavailableSale(event.target.value)}>
-            {saleOwners.map((owner) => (
+            {saleOptions.map((owner) => (
               <option key={owner} value={owner}>
                 {owner}
               </option>
@@ -492,7 +498,7 @@ export default function PlannerPage() {
         </select>
         <select className="h-10 rounded-md border border-line px-3 text-sm" value={sale} onChange={(event) => setSale(event.target.value)}>
           <option value="all">Tất cả sale</option>
-          {saleOwners.map((owner) => (
+          {saleOptions.map((owner) => (
             <option key={owner} value={owner}>
               {owner}
             </option>

@@ -4,12 +4,15 @@ import { useEffect, useMemo, useState } from "react";
 import { FrequencyBadge } from "@/components/FrequencyBadge";
 import { MetricCard } from "@/components/MetricCard";
 import { PageHeader } from "@/components/PageHeader";
-import { clusters, saleOwners, seedOutlets } from "@/lib/seed-data";
+import { loadOutlets } from "@/lib/outlet-storage";
+import { clusters, salesTerritories, seedOutlets } from "@/lib/seed-data";
 import { DEFAULT_SETTINGS, generateMonthlyRoutePlan } from "@/lib/route-logic";
+import { loadSalesConfig } from "@/lib/sales-config";
 import { loadStartPoints, saveStartPoints } from "@/lib/start-points";
-import type { Frequency } from "@/types/outlet";
+import type { Frequency, Outlet } from "@/types/outlet";
 import type { RouteVisit, WeekKey } from "@/types/route";
 import type { SaleStartPoint } from "@/types/route";
+import type { SalesTerritory } from "@/types/territory";
 
 type Point = {
   x: number;
@@ -82,8 +85,9 @@ export default function RouteMapPage() {
   const [sale, setSale] = useState("all");
   const [cluster, setCluster] = useState("all");
   const [frequency, setFrequency] = useState<"all" | Frequency>("all");
+  const [outlets, setOutlets] = useState<Outlet[]>(seedOutlets);
   const [startPoints, setStartPoints] = useState<SaleStartPoint[]>([]);
-  const [editingSale, setEditingSale] = useState(saleOwners[0] ?? "");
+  const [editingSale, setEditingSale] = useState("");
   const selectedStartPoint = startPoints.find((point) => point.salePhuTrach === editingSale && !point.date);
   const [startName, setStartName] = useState("");
   const [startType, setStartType] = useState<StartPointType>("Văn phòng");
@@ -92,9 +96,14 @@ export default function RouteMapPage() {
   const [startNote, setStartNote] = useState("");
   const [startScope, setStartScope] = useState<"default" | "date">("default");
   const [startDate, setStartDate] = useState("");
+  const [salesConfig, setSalesConfig] = useState<SalesTerritory[]>(salesTerritories);
 
   useEffect(() => {
+    const storedOutlets = loadOutlets();
+    setOutlets(storedOutlets);
+    setEditingSale(Array.from(new Set(storedOutlets.map((outlet) => outlet.salePhuTrach)))[0] ?? "");
     setStartPoints(loadStartPoints());
+    setSalesConfig(loadSalesConfig());
   }, []);
 
   useEffect(() => {
@@ -110,7 +119,8 @@ export default function RouteMapPage() {
     setStartNote(point.ghiChu);
   }, [editingSale, selectedStartPoint, startDate, startPoints, startScope]);
 
-  const plan = useMemo(() => generateMonthlyRoutePlan(month, year, seedOutlets, clusters, DEFAULT_SETTINGS, [], startPoints), [month, year, startPoints]);
+  const saleOptions = useMemo(() => Array.from(new Set(outlets.map((outlet) => outlet.salePhuTrach))).filter(Boolean), [outlets]);
+  const plan = useMemo(() => generateMonthlyRoutePlan(month, year, outlets, clusters, DEFAULT_SETTINGS, [], startPoints, salesConfig), [month, year, outlets, startPoints, salesConfig]);
   const dates = useMemo(() => uniqueDates(plan), [plan]);
   const rows = plan
     .filter((visit) => visit.status !== "CS từ xa")
@@ -197,7 +207,7 @@ export default function RouteMapPage() {
           </select>
           <input className="h-10 rounded-md border border-line px-3 text-sm disabled:bg-slate-100" type="date" value={startDate} disabled={startScope === "default"} onChange={(event) => setStartDate(event.target.value)} />
           <select className="h-10 rounded-md border border-line px-3 text-sm" value={editingSale} onChange={(event) => setEditingSale(event.target.value)}>
-            {saleOwners.map((owner) => (
+            {saleOptions.map((owner) => (
               <option key={owner} value={owner}>
                 {owner}
               </option>
@@ -260,7 +270,7 @@ export default function RouteMapPage() {
         </select>
         <select className="h-10 rounded-md border border-line px-3 text-sm" value={sale} onChange={(event) => setSale(event.target.value)}>
           <option value="all">Tất cả sale</option>
-          {saleOwners.map((owner) => (
+          {saleOptions.map((owner) => (
             <option key={owner} value={owner}>
               {owner}
             </option>

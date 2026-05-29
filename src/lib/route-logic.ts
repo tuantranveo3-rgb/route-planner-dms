@@ -1,6 +1,7 @@
 import type { RouteCluster } from "@/types/cluster";
 import type { EnrichedOutlet, Frequency, Outlet, OutletScore } from "@/types/outlet";
 import type { CarryoverVisit, PlannerSettings, RouteVisit, SaleStartPoint, WeekKey } from "@/types/route";
+import type { SalesTerritory } from "@/types/territory";
 import { formatNumber } from "@/lib/format";
 
 export const DEFAULT_SETTINGS: PlannerSettings = {
@@ -162,6 +163,7 @@ export function generateMonthlyRoutePlan(
   settings: PlannerSettings = DEFAULT_SETTINGS,
   carryovers: CarryoverVisit[] = [],
   saleStartPoints: SaleStartPoint[] = [],
+  salesTerritories: SalesTerritory[] = [],
 ): RouteVisit[] {
   const enriched = enrichOutlets(outlets, settings);
   const clusterById = new Map(clusters.map((cluster) => [cluster.maCum, cluster]));
@@ -174,6 +176,11 @@ export function generateMonthlyRoutePlan(
   const sorted = [...enriched].sort((a, b) => frequencyRank[b.frequency] - frequencyRank[a.frequency] || b.totalScore - a.totalScore);
   const outletById = new Map(enriched.map((outlet) => [outlet.outletId, outlet]));
   const lowFrequencyCarryoverOutlets = new Set<string>();
+  const scheduledDayBySaleCluster = new Map(
+    salesTerritories.flatMap((territory) =>
+      (territory.lichTheoNgay ?? []).flatMap((dayPlan) => dayPlan.clusterIds.map((clusterId) => [`${territory.salePhuTrach}-${clusterId}`, dayPlan.dayName] as const)),
+    ),
+  );
 
   for (const carryover of carryovers) {
     const outlet = outletById.get(carryover.outletId);
@@ -183,13 +190,14 @@ export function generateMonthlyRoutePlan(
     if (outlet.frequency === "F0.5" || outlet.frequency === "F0.3") {
       lowFrequencyCarryoverOutlets.add(outlet.outletId);
     }
+    const scheduledDayName = scheduledDayBySaleCluster.get(`${outlet.salePhuTrach}-${outlet.cumNho}`) ?? cluster.ngayDiCoDinh;
     const targetWeeks: WeekKey[] = outlet.frequency === "F4" || outlet.frequency === "F2" ? ["W1", "W2"] : ["W2", "W3"];
     const week = targetWeeks.find((candidate) => {
       const key = `${candidate}-${cluster.maCum}`;
       const used = capacityCounter.get(key) ?? 0;
       return used < (cluster.capacityNgay || settings.defaultDailyCapacity);
     }) ?? targetWeeks[0];
-    const key = `${week}-${cluster.maCum}-${cluster.ngayDiCoDinh}`;
+    const key = `${week}-${cluster.maCum}-${scheduledDayName}`;
     const capacity = cluster.capacityNgay || settings.defaultDailyCapacity;
     const used = capacityCounter.get(key) ?? 0;
     const warning = used >= capacity ? "Quá tải bù tuyến, cần thêm ngày đi hoặc tách cụm" : undefined;
@@ -203,8 +211,8 @@ export function generateMonthlyRoutePlan(
       month,
       year,
       week,
-      dayName: cluster.ngayDiCoDinh,
-      plannedDate: getPlannedDate(year, month, week, cluster.ngayDiCoDinh),
+      dayName: scheduledDayName,
+      plannedDate: getPlannedDate(year, month, week, scheduledDayName),
       clusterId: cluster.maCum,
       clusterName: cluster.tenCum,
       routeOrder: 0,
@@ -225,13 +233,14 @@ export function generateMonthlyRoutePlan(
     }
     const cluster = clusterById.get(outlet.cumNho);
     if (!cluster) continue;
+    const scheduledDayName = scheduledDayBySaleCluster.get(`${outlet.salePhuTrach}-${outlet.cumNho}`) ?? cluster.ngayDiCoDinh;
     const targetWeeks = getWeeksForOutlet(outlet, f2CounterByCluster, f1CounterByCluster);
 
     for (const week of targetWeeks) {
       const outletWeekKey = `${week}-${outlet.outletId}`;
       const outletWeekSequence = (outletWeekCounter.get(outletWeekKey) ?? 0) + 1;
       outletWeekCounter.set(outletWeekKey, outletWeekSequence);
-      const plannedDayName = getPlannedDayName(cluster.ngayDiCoDinh, outletWeekSequence);
+      const plannedDayName = getPlannedDayName(scheduledDayName, outletWeekSequence);
       const key = `${week}-${cluster.maCum}-${plannedDayName}`;
       const capacity = cluster.capacityNgay || settings.defaultDailyCapacity;
       const used = capacityCounter.get(key) ?? 0;

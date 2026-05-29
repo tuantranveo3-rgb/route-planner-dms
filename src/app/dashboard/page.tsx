@@ -10,7 +10,7 @@ import type { Frequency } from "@/types/outlet";
 const month = new Date().getMonth() + 1;
 const year = new Date().getFullYear();
 const outlets = enrichOutlets(seedOutlets);
-const plan = generateMonthlyRoutePlan(month, year, seedOutlets, clusters);
+const plan = generateMonthlyRoutePlan(month, year, seedOutlets, clusters, undefined, [], [], salesTerritories);
 const counts = outlets.reduce<Record<Frequency, number>>(
   (acc, outlet) => {
     acc[outlet.frequency] += 1;
