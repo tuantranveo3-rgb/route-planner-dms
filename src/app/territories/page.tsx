@@ -72,17 +72,19 @@ function TerritoriesContent() {
 
   const rows = useMemo(() => summarizeTerritories(config, outlets, clusters), [config, outlets]);
   const unassignedClusters = useMemo(() => findUnassignedClusters(config, clusters), [config]);
-  const saleOptions = useMemo(() => config.map((item) => item.salePhuTrach), [config]);
+  const activeSaleNames = useMemo(() => new Set(outlets.map((outlet) => outlet.salePhuTrach).filter(Boolean)), [outlets]);
+  const activeConfig = useMemo(() => config.filter((item) => activeSaleNames.has(item.salePhuTrach)), [activeSaleNames, config]);
+  const saleOptions = useMemo(() => activeConfig.map((item) => item.salePhuTrach), [activeConfig]);
   const districtOptions = useMemo(() => Array.from(new Set(clusters.map((cluster) => cluster.quanHuyen))).sort(), []);
 
   const visibleConfig = useMemo(
     () =>
-      config.filter((territory) => {
+      activeConfig.filter((territory) => {
         const matchSale = saleFilter === ALL_SALES || territory.salePhuTrach === saleFilter;
         const matchDistrict = districtFilter === ALL_DISTRICTS || territory.khuVucPhuTrach.includes(districtFilter);
         return matchSale && matchDistrict;
       }),
-    [config, districtFilter, saleFilter],
+    [activeConfig, districtFilter, saleFilter],
   );
 
   function updateSale(saleName: string, patch: Partial<SalesTerritory>) {
@@ -188,6 +190,7 @@ function TerritoriesContent() {
         </div>
         <div className="text-xs leading-5 text-muted">
           Bộ lọc phía trên chỉ để tìm nhanh. Muốn chỉnh phân vùng, vào từng thẻ sale bên dưới rồi bấm các chip quận/cụm/ngày. Chip có màu là đang được chọn, bấm lại để bỏ chọn.
+          Sau khi import file thật, màn này chỉ hiện các sale đang có điểm bán trong dữ liệu hiện tại.
         </div>
       </div>
 
