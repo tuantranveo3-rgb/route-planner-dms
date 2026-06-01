@@ -86,6 +86,42 @@ describe("route logic", () => {
     expect(plan.some((visit) => visit.dayName === "Thứ 5")).toBe(true);
   });
 
+  it("auto-moves visits to nearby days when a sale reaches daily max", () => {
+    const saleName = "Sale Max";
+    const dayName = clusters[0].ngayDiCoDinh;
+    const outlets = Array.from({ length: 16 }, (_, index) => ({
+      ...strongOutlet,
+      outletId: `MAX-${index}`,
+      salePhuTrach: saleName,
+      doanhSo3Thang: 260_000_000,
+      soDon3Thang: 30,
+      tiemNang: 4,
+      ruiRoMatKhach: 4,
+    }));
+    const territories = [
+      {
+        salePhuTrach: saleName,
+        khuVucPhuTrach: ["Quáº­n 1"],
+        cumNhoPhuTrach: ["Q1-A"],
+        saleBackup: "",
+        ngayDiUuTien: [dayName],
+        lichTheoNgay: [{ dayName, clusterIds: ["Q1-A"] }],
+        minVisitsPerDay: 6,
+        maxVisitsPerDay: 15,
+        ghiChu: "",
+      },
+    ];
+    const plan = generateMonthlyRoutePlan(5, 2026, outlets, clusters, undefined, [], [], territories);
+    const weekOneVisits = plan.filter((visit) => visit.week === "W1" && visit.outlet.salePhuTrach === saleName && visit.status !== "CS từ xa");
+    const countsByDate = new Map<string, number>();
+    for (const visit of weekOneVisits) {
+      countsByDate.set(visit.plannedDate, (countsByDate.get(visit.plannedDate) ?? 0) + 1);
+    }
+
+    expect(Math.max(...countsByDate.values())).toBeLessThanOrEqual(15);
+    expect(new Set(weekOneVisits.map((visit) => visit.dayName)).size).toBeGreaterThan(1);
+  });
+
   it("builds carryover items from missed execution records and injects them into next month", () => {
     const plan = generateMonthlyRoutePlan(5, 2026, seedOutlets, clusters);
     const visit = plan.find((item) => item.frequency === "F4");
@@ -138,8 +174,9 @@ describe("route logic", () => {
 
   it("summarizeExecution reports completed and missed visits", () => {
     const plan = generateMonthlyRoutePlan(5, 2026, seedOutlets, clusters);
-    const first = plan[0];
-    const second = plan[1];
+    const requiredVisits = plan.filter((visit) => visit.status !== "CS từ xa");
+    const first = requiredVisits[0];
+    const second = requiredVisits.find((visit) => visit.id !== first.id)!;
     const records = upsertExecutionRecord(upsertExecutionRecord([], first, { actualStatus: "Có đơn" }), second, { actualStatus: "Dời lịch" });
     const summary = summarizeExecution([first, second], records);
 
