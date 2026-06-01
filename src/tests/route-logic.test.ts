@@ -173,6 +173,18 @@ describe("route logic", () => {
     expect(parsed.outlets[0].khoangCachTamCumKm).toBe(5);
   });
 
+  it("parses outlet csv numbers with thousands separators", () => {
+    const csv = [
+      "outletId,tenDiemBan,kenh,chuoi,tinhThanh,quanHuyen,phuongXa,diaChi,cumNho,salePhuTrach,doanhSo3Thang,soDon3Thang,tiemNang,ruiRoMatKhach,toaDoX,toaDoY,ghiChu",
+      "CSV-N,Outlet N,MT,Watsons,TP.HCM,Quan 1,Ben Nghe,Test,Q1-A,Sale A,\"6,448,190.00\",1,2,5,106.701,10.78187,Number format",
+    ].join("\n");
+    const parsed = parseOutletCsv(csv, clusters);
+
+    expect(parsed.errors).toHaveLength(0);
+    expect(parsed.outlets[0].doanhSo3Thang).toBe(6448190);
+    expect(parsed.outlets[0].toaDoX).toBe(106.701);
+  });
+
   it("covers every route cluster with a sales territory", () => {
     const unassigned = findUnassignedClusters(salesTerritories, clusters);
     const summary = summarizeTerritories(salesTerritories, seedOutlets, clusters);

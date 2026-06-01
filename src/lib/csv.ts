@@ -35,6 +35,28 @@ function roundDistance(value: number) {
   return Number(value.toFixed(1));
 }
 
+function parseCsvNumber(value: string | number | undefined) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return Number.NaN;
+  const compact = raw.replace(/\s/g, "");
+  const hasComma = compact.includes(",");
+  const hasDot = compact.includes(".");
+
+  if (hasComma && hasDot) {
+    const lastComma = compact.lastIndexOf(",");
+    const lastDot = compact.lastIndexOf(".");
+    return Number(lastComma > lastDot ? compact.replace(/\./g, "").replace(",", ".") : compact.replace(/,/g, ""));
+  }
+
+  if (hasComma) {
+    const parts = compact.split(",");
+    const last = parts.at(-1) ?? "";
+    return Number(last.length === 3 && parts.length > 1 ? compact.replace(/,/g, "") : compact.replace(",", "."));
+  }
+
+  return Number(compact);
+}
+
 function calculateDistanceToClusterCenter(toaDoX: number, toaDoY: number, cluster?: RouteCluster) {
   if (!cluster) return Number.NaN;
   const dx = toaDoX - cluster.toaDoTamX;
@@ -56,9 +78,9 @@ export function parseOutletCsv(csv: string, routeClusters: RouteCluster[] = defa
 
   const outlets: Outlet[] = result.data.map((row, index) => {
     const line = index + 2;
-    const toaDoX = Number(row.toaDoX);
-    const toaDoY = Number(row.toaDoY);
-    const importedDistance = hasDistanceColumn && row.khoangCachTamCumKm?.trim() ? Number(row.khoangCachTamCumKm) : Number.NaN;
+    const toaDoX = parseCsvNumber(row.toaDoX);
+    const toaDoY = parseCsvNumber(row.toaDoY);
+    const importedDistance = hasDistanceColumn && row.khoangCachTamCumKm?.trim() ? parseCsvNumber(row.khoangCachTamCumKm) : Number.NaN;
     const cluster = clusterById.get(row.cumNho);
     const calculatedDistance = calculateDistanceToClusterCenter(toaDoX, toaDoY, cluster);
     const khoangCachTamCumKm = Number.isNaN(importedDistance) ? calculatedDistance : importedDistance;
@@ -78,10 +100,10 @@ export function parseOutletCsv(csv: string, routeClusters: RouteCluster[] = defa
       diaChi: row.diaChi,
       cumNho: row.cumNho,
       salePhuTrach: row.salePhuTrach,
-      doanhSo3Thang: Number(row.doanhSo3Thang),
-      soDon3Thang: Number(row.soDon3Thang),
-      tiemNang: Number(row.tiemNang),
-      ruiRoMatKhach: Number(row.ruiRoMatKhach),
+      doanhSo3Thang: parseCsvNumber(row.doanhSo3Thang),
+      soDon3Thang: parseCsvNumber(row.soDon3Thang),
+      tiemNang: parseCsvNumber(row.tiemNang),
+      ruiRoMatKhach: parseCsvNumber(row.ruiRoMatKhach),
       khoangCachTamCumKm,
       toaDoX,
       toaDoY,
@@ -149,7 +171,7 @@ export function parseExecutionHistoryCsv(csv: string): { records: RouteExecution
         salePhuTrach: row.salePhuTrach,
         actualStatus,
         actualVisitDate: row.actualVisitDate || undefined,
-        actualRevenue: row.actualRevenue ? Number(row.actualRevenue) : undefined,
+        actualRevenue: row.actualRevenue ? parseCsvNumber(row.actualRevenue) : undefined,
         note: row.note || undefined,
         carryToNextMonth: ["true", "1", "yes", "co", "có"].includes(row.carryToNextMonth.trim().toLowerCase()),
         updatedAt: new Date().toISOString(),
