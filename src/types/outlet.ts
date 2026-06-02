@@ -19,6 +19,7 @@ export interface Outlet {
   khoangCachTamCumKm: number;
   toaDoX: number;
   toaDoY: number;
+  ghiNhanF?: Frequency;
   ghiChu: string;
 }
 

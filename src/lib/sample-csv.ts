@@ -18,6 +18,7 @@ const sampleRows = [
     ruiRoMatKhach: 4,
     toaDoX: 10.2,
     toaDoY: 10.8,
+    ghiNhanF: "F4",
     ghiChu: "Khách trọng điểm",
   },
   {
@@ -37,6 +38,7 @@ const sampleRows = [
     ruiRoMatKhach: 3,
     toaDoX: 14.5,
     toaDoY: 12.4,
+    ghiNhanF: "F2",
     ghiChu: "Khách tăng trưởng",
   },
   {
@@ -56,6 +58,7 @@ const sampleRows = [
     ruiRoMatKhach: 2,
     toaDoX: 18.8,
     toaDoY: 13.5,
+    ghiNhanF: "F1",
     ghiChu: "Khách duy trì",
   },
   {
@@ -75,6 +78,7 @@ const sampleRows = [
     ruiRoMatKhach: 1,
     toaDoX: 41.2,
     toaDoY: 19.4,
+    ghiNhanF: "F0.5",
     ghiChu: "CS từ xa nếu hết capacity",
   },
 ];

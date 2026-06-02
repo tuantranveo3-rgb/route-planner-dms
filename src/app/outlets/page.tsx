@@ -34,7 +34,7 @@ export default function OutletsPage() {
     { key: "distance", header: "Khoảng cách", cell: (row) => row.distanceScore },
     { key: "risk", header: "Rủi ro", cell: (row) => row.riskScore },
     { key: "total", header: "Tổng điểm", cell: (row) => <span className="font-bold">{row.totalScore}</span> },
-    { key: "frequency", header: "F đề xuất", cell: (row) => <FrequencyBadge frequency={row.frequency} /> },
+    { key: "frequency", header: "F dùng tuyến", cell: (row) => <div className="space-y-1"><FrequencyBadge frequency={row.frequency} />{row.ghiNhanF ? <div className="text-xs font-semibold text-blue-700">Từ import</div> : <div className="text-xs text-muted">Tự tính</div>}</div> },
     { key: "visits", header: "Lượt/tháng", cell: (row) => formatNumber(row.monthlyVisits) },
     { key: "reason", header: "Lý do", cell: (row) => <span className="text-sm text-slate-600">{row.reason}</span> },
   ];
@@ -43,7 +43,7 @@ export default function OutletsPage() {
     <div>
       <PageHeader
         title="Quản lý điểm bán"
-        description="Danh sách điểm bán được chấm điểm theo doanh số, số đơn, tiềm năng, khoảng cách tâm cụm và rủi ro. F đề xuất sinh tự động từ tổng điểm."
+        description="Danh sách điểm bán dùng để lập tuyến. Nếu file import có cột ghiNhanF thì app dùng F đó; nếu thiếu ghiNhanF thì app mới tự tính F theo điểm."
       />
       <div className="mb-4 flex flex-col gap-3 rounded-lg border border-line bg-white p-4 shadow-soft md:flex-row">
         <input

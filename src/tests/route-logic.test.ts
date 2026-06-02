@@ -59,6 +59,18 @@ describe("route logic", () => {
     expect(calculateMonthlyVisits("F0.3")).toBe(0.3);
   });
 
+  it("uses imported ghiNhanF instead of recalculating route frequency", () => {
+    const outlet: Outlet = { ...strongOutlet, ghiNhanF: "F1" };
+    const score = calculateOutletScore(outlet);
+    const plan = generateMonthlyRoutePlan(5, 2026, [outlet], clusters);
+
+    expect(score.totalScore).toBe(100);
+    expect(score.frequency).toBe("F1");
+    expect(score.monthlyVisits).toBe(1);
+    expect(plan.filter((visit) => visit.outlet.outletId === outlet.outletId)).toHaveLength(1);
+    expect(plan[0].frequency).toBe("F1");
+  });
+
   it("generateMonthlyRoutePlan creates non-empty weekly plan with F4 locked in all weeks", () => {
     const plan = generateMonthlyRoutePlan(5, 2026, seedOutlets, clusters);
     const f4Outlet = plan.find((visit) => visit.frequency === "F4")?.outlet.outletId;
@@ -220,6 +232,18 @@ describe("route logic", () => {
     expect(parsed.errors).toHaveLength(0);
     expect(parsed.outlets[0].doanhSo3Thang).toBe(6448190);
     expect(parsed.outlets[0].toaDoX).toBe(106.701);
+  });
+
+  it("parses imported ghiNhanF from outlet csv", () => {
+    const csv = [
+      "outletId,tenDiemBan,kenh,chuoi,tinhThanh,quanHuyen,phuongXa,diaChi,cumNho,salePhuTrach,doanhSo3Thang,soDon3Thang,tiemNang,ruiRoMatKhach,toaDoX,toaDoY,ghiNhanF,ghiChu",
+      "CSV-F,Outlet F,MT,Watsons,TP.HCM,Quan 1,Ben Nghe,Test,Q1-A,Sale A,\"300,000,000\",36,5,5,10,11,F1,Use imported F",
+    ].join("\n");
+    const parsed = parseOutletCsv(csv, clusters);
+
+    expect(parsed.errors).toHaveLength(0);
+    expect(parsed.outlets[0].ghiNhanF).toBe("F1");
+    expect(calculateOutletScore(parsed.outlets[0]).frequency).toBe("F1");
   });
 
   it("covers every route cluster with a sales territory", () => {

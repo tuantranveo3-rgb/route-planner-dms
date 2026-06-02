@@ -2,7 +2,7 @@ import Papa from "papaparse";
 import { executionStatuses } from "@/lib/route-execution";
 import { clusters as defaultClusters } from "@/lib/seed-data";
 import type { RouteCluster } from "@/types/cluster";
-import type { Outlet } from "@/types/outlet";
+import type { Frequency, Outlet } from "@/types/outlet";
 import type { RouteExecutionRecord, RouteVisit, VisitStatus, WeekKey } from "@/types/route";
 
 export const requiredOutletColumns: Array<keyof Outlet> = [
@@ -25,7 +25,7 @@ export const requiredOutletColumns: Array<keyof Outlet> = [
   "ghiChu",
 ];
 
-export const optionalOutletColumns: Array<keyof Outlet> = ["khoangCachTamCumKm"];
+export const optionalOutletColumns: Array<keyof Outlet> = ["khoangCachTamCumKm", "ghiNhanF"];
 
 export function validateOutletColumns(fields: string[]): string[] {
   return requiredOutletColumns.filter((column) => !fields.includes(column));
@@ -64,6 +64,16 @@ function calculateDistanceToClusterCenter(toaDoX: number, toaDoY: number, cluste
   return roundDistance(Math.sqrt(dx * dx + dy * dy));
 }
 
+const validFrequencies: Frequency[] = ["F8", "F4", "F2", "F1", "F0.5", "F0.3"];
+
+function parseFrequency(value: string | undefined): Frequency | undefined {
+  const normalized = String(value ?? "").trim().toUpperCase();
+  if (!normalized) return undefined;
+  if (normalized === "F05" || normalized === "F0,5") return "F0.5";
+  if (normalized === "F03" || normalized === "F0,3") return "F0.3";
+  return validFrequencies.includes(normalized as Frequency) ? (normalized as Frequency) : undefined;
+}
+
 export function parseOutletCsv(csv: string, routeClusters: RouteCluster[] = defaultClusters): { outlets: Outlet[]; errors: string[] } {
   const result = Papa.parse<Record<string, string>>(csv, { header: true, skipEmptyLines: true });
   const fields = result.meta.fields ?? [];
@@ -81,6 +91,8 @@ export function parseOutletCsv(csv: string, routeClusters: RouteCluster[] = defa
     const toaDoX = parseCsvNumber(row.toaDoX);
     const toaDoY = parseCsvNumber(row.toaDoY);
     const importedDistance = hasDistanceColumn && row.khoangCachTamCumKm?.trim() ? parseCsvNumber(row.khoangCachTamCumKm) : Number.NaN;
+    const rawFrequency = row.ghiNhanF || row.F || row.tanSuat;
+    const ghiNhanF = parseFrequency(rawFrequency);
     const cluster = clusterById.get(row.cumNho);
     const calculatedDistance = calculateDistanceToClusterCenter(toaDoX, toaDoY, cluster);
     const khoangCachTamCumKm = Number.isNaN(importedDistance) ? calculatedDistance : importedDistance;
@@ -88,6 +100,8 @@ export function parseOutletCsv(csv: string, routeClusters: RouteCluster[] = defa
     if (!cluster) errors.push(`Dòng ${line}: cumNho "${row.cumNho}" chưa có trong danh sách cụm, không tự tính được khoảng cách tâm cụm.`);
     if (Number.isNaN(toaDoX) || Number.isNaN(toaDoY)) errors.push(`Dòng ${line}: toaDoX/toaDoY không hợp lệ.`);
     if (Number.isNaN(khoangCachTamCumKm)) errors.push(`Dòng ${line}: khoangCachTamCumKm trống và không tự tính được từ tọa độ/tâm cụm.`);
+
+    if (rawFrequency && !ghiNhanF) errors.push(`Dòng ${line}: ghiNhanF "${rawFrequency}" không hợp lệ. Chỉ nhận F8, F4, F2, F1, F0.5, F0.3.`);
 
     return {
       outletId: row.outletId,
@@ -107,6 +121,7 @@ export function parseOutletCsv(csv: string, routeClusters: RouteCluster[] = defa
       khoangCachTamCumKm,
       toaDoX,
       toaDoY,
+      ghiNhanF,
       ghiChu: row.ghiChu,
     };
   });
@@ -208,6 +223,7 @@ export function plannerToCsv(plan: RouteVisit[]): string {
       quanHuyen: visit.outlet.quanHuyen,
       phuongXa: visit.outlet.phuongXa,
       cumNho: visit.clusterId,
+      ghiNhanF: visit.outlet.ghiNhanF ?? "",
       tanSuat: visit.frequency,
       tongDiem: visit.outlet.totalScore,
       doanhSo3Thang: visit.outlet.doanhSo3Thang,

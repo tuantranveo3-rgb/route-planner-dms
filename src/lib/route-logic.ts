@@ -102,7 +102,8 @@ export function calculateOutletScore(outlet: Outlet, settings: PlannerSettings =
       riskScore * settings.weights.risk) /
       totalWeight,
   );
-  const frequency = assignFrequency(totalScore);
+  const suggestedFrequency = assignFrequency(totalScore);
+  const frequency = outlet.ghiNhanF ?? suggestedFrequency;
   const monthlyVisits = calculateMonthlyVisits(frequency);
   const reason = buildFrequencyReason(outlet, {
     salesScore,
@@ -134,6 +135,10 @@ export function enrichOutlets(outlets: Outlet[], settings: PlannerSettings = DEF
 }
 
 function buildFrequencyReason(outlet: Outlet, score: OutletScore): string {
+  if (outlet.ghiNhanF) {
+    return `${score.frequency}: dùng F ghi nhận từ file import; điểm tổng ${formatNumber(score.totalScore)} chỉ để tham khảo.`;
+  }
+
   const drivers = [
     score.salesScore >= 80 ? "doanh số mạnh" : "",
     score.orderScore >= 75 ? "đơn hàng đều" : "",
