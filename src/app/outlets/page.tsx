@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { DataTable, type Column } from "@/components/DataTable";
 import { FrequencyBadge } from "@/components/FrequencyBadge";
@@ -61,6 +62,9 @@ export default function OutletsPage() {
           <option value="F0.5">F0.5</option>
           <option value="F0.3">F0.3</option>
         </select>
+        <Link className="flex h-10 items-center justify-center rounded-md bg-ink px-4 text-sm font-bold text-white" href="/import-export">
+          Import điểm bán + F
+        </Link>
       </div>
       <DataTable columns={columns} rows={rows} rowKey={(row) => row.outletId} />
     </div>

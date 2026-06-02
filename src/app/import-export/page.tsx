@@ -114,7 +114,7 @@ export default function ImportExportPage() {
     <div>
       <PageHeader
         title="Import/Export CSV"
-        description="Import danh sách điểm bán CSV có đủ cột bắt buộc. App sẽ lưu dữ liệu import, tự đồng bộ sale mới sang Phân vùng sale, chấm điểm, phân F và tạo lại Planner."
+        description="Import danh sách điểm bán CSV. Nếu file có cột ghiNhanF thì Planner dùng F anh nhập để phân tuyến; nếu thiếu ghiNhanF thì app mới tự tính F theo điểm."
       />
       <div className="mb-4 grid gap-4 rounded-lg border border-line bg-white p-4 shadow-soft md:grid-cols-3">
         <label className="block">
