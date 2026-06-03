@@ -5,17 +5,17 @@ const steps = [
   {
     title: "1. Kiểm tra dữ liệu điểm bán",
     href: "/outlets",
-    body: "Vào Điểm bán để xem danh sách outlet, điểm doanh số, điểm đơn hàng, tổng điểm và F đề xuất. MVP đã có sẵn dữ liệu mẫu nên không bị trống màn hình.",
+    body: "Vào Điểm bán để xem outlet, sale phụ trách, cụm nhỏ, điểm doanh số, điểm đơn hàng, tổng điểm và F dùng tuyến. Nếu file import có ghiNhanF thì app dùng F đó; nếu không có thì app tự tính.",
   },
   {
     title: "2. Setup cụm tuyến nhỏ",
     href: "/clusters",
-    body: "Cụm tuyến phải là phường/xã/cụm đường nhỏ như Q1-A, BT-A, PN-A. Không gom tuyến theo quận lớn vì sẽ làm sale chạy ziczac.",
+    body: "Cụm tuyến phải là phường/xã/cụm đường nhỏ như Q1-A, BT-A, PN-A. Không gom tuyến theo cả quận lớn vì sale dễ chạy ziczac.",
   },
   {
     title: "3. Setup sale và khu vực",
     href: "/territories",
-    body: "Vào Phân vùng sale để gán sale theo khu vực/cụm, chỉnh min/max điểm mỗi ngày và sale backup. Min/max này dùng để cảnh báo ngày thiếu tải hoặc quá tải.",
+    body: "Vào Phân vùng sale để gán sale theo khu vực/cụm, chỉnh min/max điểm mỗi ngày và chọn cụm sale đi theo từng thứ. Lịch cố định nằm theo sale, không cứng theo cụm.",
   },
   {
     title: "4. Chỉnh công thức và capacity",
@@ -30,7 +30,7 @@ const steps = [
   {
     title: "6. Nhập thực hiện",
     href: "/planner",
-    body: "Trong Planner, chọn tab Bảng chi tiết để nhập trạng thái thực hiện, ngày đi thực tế, doanh số phát sinh, ghi chú và tick Cần bù nếu muốn ưu tiên tháng sau.",
+    body: "Trong Planner, cập nhật trạng thái thực hiện, ngày đi thực tế, doanh số phát sinh, ghi chú và tick Cần bù nếu muốn ưu tiên tháng sau.",
   },
   {
     title: "7. Import/Export CSV",
@@ -40,7 +40,7 @@ const steps = [
   {
     title: "8. Xem bản đồ tuyến",
     href: "/route-map",
-    body: "Vào Bản đồ tuyến để xem marker theo tọa độ X/Y, đường nối theo STT đi và START theo sale/ngày. Có thể chọn START mặc định hoặc START riêng cho từng ngày.",
+    body: "Vào Bản đồ tuyến để xem marker trên Leaflet + OpenStreetMap. Không cần Google API key. Có thể chọn START mặc định theo sale hoặc START riêng cho từng ngày.",
   },
   {
     title: "9. Xem báo cáo",
@@ -59,7 +59,7 @@ const frequencyRules = [
 ];
 
 const practicalNotes = [
-  "Nếu sale ở văn phòng/kho/nghỉ/chỉ đạo khác, vào Planner thêm ngày sale không đi tuyến. App sẽ dời điểm sang ngày làm việc kế tiếp nếu còn ngày.",
+  "Nếu sale ở văn phòng/kho/nghỉ/nhận chỉ đạo khác, vào Planner thêm ngày sale không đi tuyến. App sẽ dời điểm sang ngày làm việc kế tiếp nếu còn ngày.",
   "Nếu mỗi ngày sale xuất phát khác nhau, vào Bản đồ tuyến chọn Riêng cho ngày, nhập START cho sale và ngày đó.",
   "Nếu import lịch sử thực hiện nhiều lần, app cộng dồn theo visitId. Trùng visitId thì cập nhật, tháng cũ không bị xóa.",
   "Nên bấm Export toàn bộ lịch sử định kỳ để backup vì MVP đang lưu dữ liệu trên trình duyệt.",
@@ -71,11 +71,11 @@ export default function GuidePage() {
     <div>
       <PageHeader
         title="Hướng dẫn sử dụng"
-        description="Trang này tóm tắt toàn bộ luồng dùng Route Planner DMS để người mới có thể tự setup dữ liệu, xem lịch tuyến, nhập thực hiện và xuất báo cáo."
+        description="Tóm tắt toàn bộ luồng dùng Route Planner DMS để người mới có thể tự setup dữ liệu, xem lịch tuyến, nhập thực hiện và xuất báo cáo."
       />
 
       <div className="mb-4 rounded-lg border border-blue-100 bg-blue-50 p-4 text-sm leading-6 text-blue-900">
-        Quy trình khuyến nghị: chuẩn hóa điểm bán → gán cụm nhỏ → gán sale/khu vực → tạo Planner → sale đi tuyến → nhập/import thực hiện → tháng sau bù điểm chưa đi.
+        Quy trình khuyến nghị: chuẩn hóa điểm bán - gán cụm nhỏ - gán sale/khu vực - tạo Planner - sale đi tuyến - nhập/import thực hiện - tháng sau bù điểm chưa đi.
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[1fr_380px]">
@@ -118,7 +118,7 @@ export default function GuidePage() {
           </div>
 
           <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
-            Bản đồ hiện là sơ đồ tuyến theo tọa độ X/Y để demo logic START và thứ tự đi. Chưa phải Google Maps/Directions theo đường phố thật, nên chưa tính chính xác thời gian di chuyển ngoài thực tế.
+            Bản đồ dùng OpenStreetMap để xem vị trí và đường nối theo STT đi. Đây chưa phải Directions theo đường phố thật, nên chưa tính chính xác thời gian di chuyển ngoài thực tế.
           </div>
         </div>
       </div>

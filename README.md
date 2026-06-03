@@ -1,6 +1,6 @@
 # Route Planner DMS
 
-MVP web app tối ưu tuyến bán hàng GT/MT theo cụm nhỏ phường/xã/cụm đường. App dùng Next.js, TypeScript, TailwindCSS, dữ liệu seed local và không cần login.
+MVP web app lập tuyến bán hàng GT/MT theo cụm nhỏ phường/xã/cụm đường. App dùng Next.js, TypeScript, TailwindCSS, dữ liệu seed local và không cần login.
 
 ## Cài đặt
 
@@ -11,15 +11,16 @@ npm run dev
 
 Mở `http://localhost:3000`.
 
-## Google Maps
+## Bản đồ tuyến
 
-Trang `Bản đồ tuyến` có thể hiển thị marker trên Google Maps nếu cấu hình API key:
+Trang `Bản đồ tuyến` dùng Leaflet.js + OpenStreetMap để hiển thị:
 
-```bash
-NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=your_google_maps_api_key
-```
+- Marker điểm bán theo tọa độ `toaDoX`/`toaDoY`.
+- Marker START theo từng sale hoặc riêng từng ngày.
+- Đường nối theo STT đi trong ngày.
+- Màu marker theo F.
 
-Ở Vercel, thêm biến này trong Project Settings -> Environment Variables rồi redeploy. App chỉ dùng Google Maps để hiển thị marker, START và polyline theo STT đi; không gọi Routes/Distance Matrix/Optimization nên chi phí thấp. Nếu chưa có API key, app tự dùng sơ đồ tọa độ nội bộ làm fallback.
+Không cần Google Maps API key, không cần billing. Đường nối hiện là đường thẳng theo thứ tự ghé dự kiến, chưa phải chỉ đường thực tế theo đường phố.
 
 ## Kiểm tra
 
@@ -36,8 +37,10 @@ npm run build
 - `F4`: 4 lần/tháng, khách trọng điểm, ghé hằng tuần.
 - `F2`: 2 lần/tháng, khách tăng trưởng, chia W1-W3 hoặc W2-W4.
 - `F1`: 1 lần/tháng, khách duy trì, lấp vào tuyến cùng cụm.
-- `F0.5`: 0.5 lần/tháng, khách nhỏ/xa, chỉ đi nếu còn capacity hoặc chuyển CS từ xa/Zalo/Telesales.
-- `F0.3`: khoảng 0.3 lần/tháng, khách rất nhỏ/xa, ưu tiên CS từ xa nhưng vẫn ghi nhớ nếu chưa đi.
+- `F0.5`: 0.5 lần/tháng, khách nhỏ/xa, khoảng 2 tháng ghé 1 lần.
+- `F0.3`: khoảng 0.3 lần/tháng, khách rất nhỏ/xa, khoảng 3 tháng ghé 1 lần hoặc CS từ xa.
+
+Nếu file import có cột `ghiNhanF`, app dùng F đó để lập tuyến. Nếu thiếu `ghiNhanF`, app tự tính F theo điểm.
 
 ## Công thức chấm điểm
 
@@ -49,7 +52,7 @@ Logic nằm trong `src/lib/route-logic.ts`.
 - Khoảng cách tâm cụm: 15%.
 - Rủi ro mất khách/OOS/đối thủ: 10%.
 
-Quy đổi F:
+Quy đổi F tự tính:
 
 - Tổng điểm >= 92: `F8`.
 - Tổng điểm >= 80: `F4`.
@@ -65,119 +68,68 @@ Quy đổi F:
 - `F8` khóa 8 lượt/tháng, 2 lượt mỗi tuần.
 - `F4` khóa trước ở W1, W2, W3, W4.
 - `F2` chia đều W1-W3 hoặc W2-W4.
-- `F1` rải 25% mỗi tuần.
-- `F0.5` chỉ đưa vào nếu còn capacity, nếu không sẽ có trạng thái `CS từ xa`.
-- `optimizeDailyRoute` sắp thứ tự trong ngày theo F, góc tuyến quanh tâm cụm và khoảng cách.
+- `F1` rải đều trong tháng.
+- `F0.5` và `F0.3` chỉ đưa vào nếu còn capacity hoặc được ưu tiên bù do lịch sử chưa đi.
+- `optimizeDailyRoute` sắp thứ tự trong ngày theo F, góc tuyến quanh START/tâm cụm và khoảng cách.
 
-## Setup Khu Vực Và Sale
+Planner không gom tuyến theo quận lớn. Mọi tuyến phải đi theo cụm nhỏ như `Q1-A`, `BT-A`, `PN-A`.
 
-Màn `Phân vùng sale` cho phép setup trường hợp mỗi sale phụ trách một khu vực/quận:
+## Setup sale và khu vực
 
-- Sale có khu vực/quận phụ trách chính.
-- Sale có danh sách cụm nhỏ phụ trách.
-- Sale có backup khi nghỉ phép, họp hoặc nhận chỉ đạo khác.
-- Sale có min/max số điểm đi mỗi ngày riêng.
-- Planner vẫn lập tuyến theo cụm nhỏ trong khu vực, không gom cả quận thành một tuyến lớn.
+Màn `Phân vùng sale` cho phép:
 
-Ví dụ: An Nguyễn phụ trách Quận 1, nhưng lịch vẫn tách `Q1-A` và `Q1-B`.
+- Gán sale theo quận/khu vực phụ trách.
+- Gán sale theo cụm nhỏ.
+- Chỉnh min/max số điểm đi mỗi ngày riêng từng sale.
+- Chọn cụm sale đi theo từng thứ trong tuần.
+- Chọn sale backup khi nghỉ phép, họp, đi kho hoặc nhận chỉ đạo khác.
 
-## Báo Cáo
+Ví dụ: hai sale đều có thể đi Thứ 2, nhưng mỗi sale đi cụm khác nhau. Lịch cố định nằm ở cấu hình sale, không nằm cứng ở cụm.
 
-Màn `Báo cáo` hỗ trợ:
+## Theo dõi thực hiện và bù tháng sau
 
-- Báo cáo theo tháng.
-- Lọc theo sale.
-- Số lượt cần đi, hoàn tất, đi thiếu.
-- Tỷ lệ hoàn thành.
-- Số tuyến bù.
-- Mix tần suất F8/F4/F2/F1/F0.5/F0.3.
-- Theo dõi riêng F0.5/F0.3 chưa đi từ tháng trước được gợi ý sang tháng này.
-
-## Theo dõi thực hiện tuyến và bù tháng sau
-
-Trong màn hình Planner, mỗi lượt ghé có thể cập nhật thực tế:
+Trong Planner, mỗi lượt ghé có thể cập nhật:
 
 - Trạng thái: `Chưa đi`, `Đã đi`, `Có đơn`, `Không có đơn`, `Không gặp khách`, `Dời lịch`, `CS từ xa`.
 - Ngày sale thực ghé.
 - Doanh số phát sinh.
 - Ghi chú lý do chưa đi hoặc kết quả ghé.
-- Tick `Cần bù` nếu muốn ép lượt đó vào danh sách bù tháng sau.
+- Tick `Cần bù` nếu muốn ưu tiên tháng sau.
 
-App tính KPI thực hiện:
-
-- Lượt cần đi.
-- Lượt đã hoàn tất.
-- Lượt đi thiếu.
-- Tỷ lệ hoàn thành.
-- Bảng đủ/thiếu theo sale.
-
-Khi chuyển sang tháng sau, các lượt tháng trước có record thực tế bị thiếu hoặc được tick `Cần bù` sẽ được chèn vào lịch mới:
-
-- F8/F4/F2 ưu tiên W1-W2.
-- F1 ưu tiên W2-W3.
-- F0.5/F0.3 nếu chưa đi sẽ được ghi nhớ để ưu tiên gợi ý tháng sau.
-- Vẫn bù theo cụm nhỏ, không gom theo quận lớn.
-- Nếu bù làm vượt capacity, app hiển thị cảnh báo quá tải bù tuyến.
-
-MVP lưu dữ liệu thực hiện bằng `localStorage` trên trình duyệt.
-
-Tiện ích demo trong Planner:
-
-- `Reset dữ liệu demo`: xóa toàn bộ trạng thái thực hiện đang lưu local trên trình duyệt.
-- `Export theo filter`: chỉ xuất các dòng đang hiển thị sau khi lọc tuần/sale/cụm/F/trạng thái/tuyến bù.
-- `Export toàn bộ`: xuất toàn bộ lịch tuyến của tháng đang chọn.
-- Filter nhanh: `Chỉ tuyến bù`, `Chỉ tuyến thiếu`, `F4/F2 bị miss`.
-- Planner cảnh báo nếu một sale/ngày thấp hơn min hoặc vượt max trong Cài đặt.
-
-## Cài Đặt Min/Max Sale
-
-Màn Cài đặt cho phép chỉnh thêm:
-
-- `Min điểm sale/ngày`: mặc định 6 điểm.
-- `Max điểm sale/ngày`: mặc định 15 điểm.
-
-Planner sẽ đọc cấu hình này từ `localStorage`. Nếu sale có tuyến quá mỏng hoặc quá tải trong một ngày, app hiển thị cảnh báo để ASM ghép thêm điểm, dời điểm hoặc chuyển F0.5 sang CS từ xa.
-
-## Import lịch sử tháng trước
-
-Màn Import/Export có thêm khu vực `Import lịch sử thực hiện tháng trước`. File này dùng để mô phỏng kết quả sale đã đi tháng trước và tạo tuyến bù cho tháng sau.
-
-Cột bắt buộc:
-
-- `month`: tháng thực hiện, ví dụ `5`.
-- `year`: năm thực hiện, ví dụ `2026`.
-- `week`: `W1`, `W2`, `W3`, hoặc `W4`.
-- `outletId`: mã điểm bán trùng với planner.
-- `salePhuTrach`: sale phụ trách.
-- `actualStatus`: một trong các trạng thái `Chưa đi`, `Đã đi`, `Có đơn`, `Không có đơn`, `Không gặp khách`, `Dời lịch`, `CS từ xa`.
-- `actualVisitDate`: ngày ghé thực tế, ví dụ `2026-05-05`, có thể để trống.
-- `actualRevenue`: doanh số phát sinh, có thể để trống.
-- `note`: ghi chú lý do/kết quả.
-- `carryToNextMonth`: `true` hoặc `false`.
-
-Sau khi import lịch sử, vào Planner và chọn tháng sau. Các điểm có `carryToNextMonth=true` hoặc trạng thái chưa hoàn tất sẽ xuất hiện dưới dạng tuyến bù.
+Import lịch sử thực hiện là cộng dồn. Trùng `visitId` thì cập nhật record đó, dữ liệu tháng/năm cũ không bị xóa.
 
 ## Import/Export CSV
 
-Vào màn hình Import/Export:
+Màn `Import/Export` hỗ trợ:
 
-- Tải file mẫu từ `public/sample_outlets.csv`.
-- Trong app, nút `Tải file mẫu` xuất CSV UTF-8 BOM để Excel trên Windows đọc đúng tiếng Việt.
-- Import CSV danh sách điểm bán. App validate cột bắt buộc và báo lỗi tiếng Việt nếu thiếu.
-- Export CSV lịch tuyến từ Planner hoặc màn hình Import/Export.
+- Tải file mẫu điểm bán.
+- Import CSV điểm bán.
+- Import cộng dồn lịch sử thực hiện.
+- Export lịch tuyến theo tháng/sale/filter.
+- Export toàn bộ lịch sử để backup.
 
-Hai cột hay dùng:
+Cột hay dùng:
 
-- `doanhSo3Thang`: tổng doanh số 3 tháng gần nhất của điểm bán, nhập số VND không dấu phẩy. Ví dụ `285000000`.
-- `soDon3Thang`: tổng số đơn hàng 3 tháng gần nhất. Ví dụ `34`.
+- `doanhSo3Thang`: tổng doanh số 3 tháng gần nhất, nhập số VND không dấu phẩy.
+- `soDon3Thang`: tổng số đơn hàng 3 tháng gần nhất.
+- `ghiNhanF`: F do công ty/chủ quản quy định, ví dụ `F4`, `F2`, `F0.5`.
+- `toaDoX`: kinh độ nếu dùng bản đồ thật.
+- `toaDoY`: vĩ độ nếu dùng bản đồ thật.
 
-## Xử lý cụm quá tải
+File CSV nên dùng UTF-8 BOM để Excel Windows đọc đúng tiếng Việt.
 
-Nếu một cụm vượt capacity/ngày, Planner hiển thị cảnh báo: `Quá tải, cần tách cụm hoặc hạ tần suất`.
+## Xử lý quá tải
+
+Nếu một sale/ngày vượt max hoặc một cụm vượt capacity, Planner sẽ cảnh báo.
 
 Cách xử lý đề xuất:
 
 - Tách cụm phường/xã thành cụm nhỏ hơn.
-- Chuyển một phần `F0.5` sang CS từ xa.
-- Rà lại `F1/F2` nếu điểm tổng sát ngưỡng.
-- Tăng ngày đi cố định hoặc thêm sale phụ trách cho cụm.
+- Chuyển một phần `F0.5`/`F0.3` sang CS từ xa.
+- Dời điểm sang ngày khác trong cùng cụm.
+- Thêm sale phụ trách hoặc sale backup.
+- Rà lại F nếu điểm đã xuống thấp nhưng vẫn đang giữ F cao.
+
+## Ghi chú MVP
+
+Dữ liệu đang lưu trên trình duyệt bằng `localStorage`. Khi demo nhiều máy/người dùng, mỗi máy sẽ có dữ liệu riêng. Muốn dùng vận hành thật cho nhiều sale cần bổ sung database, login và phân quyền.

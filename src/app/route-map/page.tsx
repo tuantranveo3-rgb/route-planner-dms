@@ -19,29 +19,40 @@ type Point = {
   y: number;
 };
 
-type GoogleLatLng = { lat: number; lng: number };
-type GoogleMap = {
-  fitBounds: (bounds: GoogleBounds) => void;
-  setCenter: (position: GoogleLatLng) => void;
-  setZoom: (zoom: number) => void;
+type LeafletLatLng = [number, number];
+type LeafletBounds = unknown;
+type LeafletMap = {
+  fitBounds: (bounds: LeafletBounds, options?: { padding?: [number, number] }) => void;
+  setView: (center: LeafletLatLng, zoom: number) => void;
+  invalidateSize: () => void;
 };
-type GoogleBounds = { extend: (position: GoogleLatLng) => void };
-type GoogleOverlay = { setMap: (map: GoogleMap | null) => void };
-type GoogleMapsApi = {
-  Map: new (element: HTMLElement, options: { center: GoogleLatLng; zoom: number; mapTypeControl?: boolean; streetViewControl?: boolean; fullscreenControl?: boolean }) => GoogleMap;
-  Marker: new (options: { position: GoogleLatLng; map: GoogleMap; title?: string; label?: { text: string; color: string; fontWeight: string }; icon?: unknown }) => GoogleOverlay;
-  Polyline: new (options: { path: GoogleLatLng[]; geodesic: boolean; strokeColor: string; strokeOpacity: number; strokeWeight: number; map: GoogleMap }) => GoogleOverlay;
-  LatLngBounds: new () => GoogleBounds;
-  SymbolPath: { CIRCLE: number };
+type LeafletLayer = {
+  addTo: (map: LeafletMap) => LeafletLayer;
+  remove: () => void;
+};
+type LeafletMarker = LeafletLayer & {
+  bindPopup: (content: string) => LeafletMarker;
+};
+type LeafletApi = {
+  divIcon: (options: { className: string; html: string; iconSize: [number, number]; iconAnchor: [number, number] }) => unknown;
+  latLngBounds: (points: LeafletLatLng[]) => LeafletBounds;
+  map: (element: HTMLElement, options: { center: LeafletLatLng; zoom: number; scrollWheelZoom: boolean }) => LeafletMap;
+  marker: (position: LeafletLatLng, options?: { icon?: unknown; title?: string }) => LeafletMarker;
+  polyline: (path: LeafletLatLng[], options: { color: string; opacity: number; weight: number }) => LeafletLayer;
+  tileLayer: (url: string, options: { attribution: string; maxZoom: number }) => LeafletLayer;
 };
 
 declare global {
   interface Window {
-    google?: { maps: GoogleMapsApi };
+    L?: LeafletApi;
   }
 }
 
 type StartPointType = SaleStartPoint["loaiDiem"];
+
+const leafletCssUrl = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+const leafletJsUrl = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+let leafletLoader: Promise<LeafletApi> | undefined;
 
 const startPointTypes: StartPointType[] = ["Văn phòng", "Kho", "Nhà sale", "Điểm hẹn"];
 
@@ -54,39 +65,75 @@ const frequencyColors: Record<Frequency, string> = {
   "F0.3": "#71717a",
 };
 
-const googleMapsApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
-let googleMapsLoader: Promise<GoogleMapsApi> | undefined;
+function loadLeaflet() {
+  if (typeof window === "undefined") return Promise.reject(new Error("Leaflet chỉ chạy trên trình duyệt."));
+  if (window.L) return Promise.resolve(window.L);
 
-function loadGoogleMaps() {
-  if (typeof window === "undefined") return Promise.reject(new Error("Google Maps chỉ chạy trên trình duyệt."));
-  if (window.google?.maps) return Promise.resolve(window.google.maps);
-  if (!googleMapsApiKey) return Promise.reject(new Error("Thiếu NEXT_PUBLIC_GOOGLE_MAPS_API_KEY."));
-  if (!googleMapsLoader) {
-    googleMapsLoader = new Promise((resolve, reject) => {
-      const existing = document.querySelector<HTMLScriptElement>("script[data-route-planner-google-maps]");
+  if (!document.querySelector("link[data-route-planner-leaflet-css]")) {
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = leafletCssUrl;
+    link.dataset.routePlannerLeafletCss = "true";
+    document.head.appendChild(link);
+  }
+
+  if (!leafletLoader) {
+    leafletLoader = new Promise((resolve, reject) => {
+      const existing = document.querySelector<HTMLScriptElement>("script[data-route-planner-leaflet]");
       if (existing) {
-        existing.addEventListener("load", () => window.google?.maps ? resolve(window.google.maps) : reject(new Error("Không tải được Google Maps.")), { once: true });
-        existing.addEventListener("error", () => reject(new Error("Không tải được Google Maps.")), { once: true });
+        existing.addEventListener("load", () => window.L ? resolve(window.L) : reject(new Error("Không tải được Leaflet.")), { once: true });
+        existing.addEventListener("error", () => reject(new Error("Không tải được Leaflet.")), { once: true });
         return;
       }
 
       const script = document.createElement("script");
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(googleMapsApiKey)}&v=weekly`;
+      script.src = leafletJsUrl;
       script.async = true;
       script.defer = true;
-      script.dataset.routePlannerGoogleMaps = "true";
-      script.addEventListener("load", () => window.google?.maps ? resolve(window.google.maps) : reject(new Error("Không tải được Google Maps.")), { once: true });
-      script.addEventListener("error", () => reject(new Error("Không tải được Google Maps.")), { once: true });
+      script.dataset.routePlannerLeaflet = "true";
+      script.addEventListener("load", () => window.L ? resolve(window.L) : reject(new Error("Không tải được Leaflet.")), { once: true });
+      script.addEventListener("error", () => reject(new Error("Không tải được Leaflet.")), { once: true });
       document.head.appendChild(script);
     });
   }
-  return googleMapsLoader;
+
+  return leafletLoader;
 }
 
-function toGoogleLatLng(x: number, y: number): GoogleLatLng | undefined {
+function toLatLng(x: number, y: number): LeafletLatLng | undefined {
   if (!Number.isFinite(x) || !Number.isFinite(y)) return undefined;
   if (x < -180 || x > 180 || y < -90 || y > 90) return undefined;
-  return { lat: y, lng: x };
+  return [y, x];
+}
+
+function escapeHtml(value: string) {
+  return value.replace(/[&<>"']/g, (char) => {
+    const entities: Record<string, string> = {
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#039;",
+    };
+    return entities[char];
+  });
+}
+
+function markerHtml(label: string, color: string) {
+  return `<div style="
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    width:28px;
+    height:28px;
+    border-radius:999px;
+    background:${color};
+    color:white;
+    border:2px solid white;
+    box-shadow:0 8px 18px rgba(15,23,42,.25);
+    font-size:12px;
+    font-weight:800;
+  ">${escapeHtml(label)}</div>`;
 }
 
 function formatDateValue(dateValue: string) {
@@ -136,9 +183,9 @@ function uniqueDates(plan: RouteVisit[]) {
 
 export default function RouteMapPage() {
   const year = new Date().getFullYear();
-  const googleMapElementRef = useRef<HTMLDivElement>(null);
-  const googleMapRef = useRef<GoogleMap | null>(null);
-  const googleOverlaysRef = useRef<GoogleOverlay[]>([]);
+  const mapElementRef = useRef<HTMLDivElement>(null);
+  const leafletMapRef = useRef<LeafletMap | null>(null);
+  const leafletLayersRef = useRef<LeafletLayer[]>([]);
   const [month, setMonth] = useState(new Date().getMonth() + 1);
   const [date, setDate] = useState("all");
   const [week, setWeek] = useState<"all" | WeekKey>("all");
@@ -157,7 +204,7 @@ export default function RouteMapPage() {
   const [startScope, setStartScope] = useState<"default" | "date">("default");
   const [startDate, setStartDate] = useState("");
   const [salesConfig, setSalesConfig] = useState<SalesTerritory[]>(salesTerritories);
-  const [googleMapStatus, setGoogleMapStatus] = useState(googleMapsApiKey ? "Đang tải Google Maps..." : "Chưa cấu hình Google Maps API key, đang dùng sơ đồ nội bộ.");
+  const [mapStatus, setMapStatus] = useState("Đang tải bản đồ OpenStreetMap...");
 
   useEffect(() => {
     const storedOutlets = loadOutlets();
@@ -220,88 +267,80 @@ export default function RouteMapPage() {
   const selectedSaleText = sale === "all" ? "tất cả sale" : sale;
   const selectedDateText = date === "all" ? "tất cả ngày" : formatDateValue(date);
   const totalDistance = rows.reduce((sum, visit) => sum + visit.outlet.khoangCachTamCumKm, 0);
-  const showGoogleMap = Boolean(googleMapsApiKey) && !googleMapStatus.includes("Đang dùng sơ đồ nội bộ");
+  const showInternalMap = mapStatus.includes("sơ đồ nội bộ");
 
   useEffect(() => {
-    if (!googleMapsApiKey) {
-      setGoogleMapStatus("Chưa cấu hình Google Maps API key, đang dùng sơ đồ nội bộ.");
-      return;
-    }
-    const element = googleMapElementRef.current;
-    if (!element) return;
+    const element = mapElementRef.current;
+    if (!element || !rows.length) return;
 
     let cancelled = false;
-    loadGoogleMaps()
-      .then((maps) => {
+    setMapStatus("Đang tải bản đồ OpenStreetMap...");
+
+    loadLeaflet()
+      .then((leaflet) => {
         if (cancelled) return;
-        googleOverlaysRef.current.forEach((overlay) => overlay.setMap(null));
-        googleOverlaysRef.current = [];
+
+        leafletLayersRef.current.forEach((layer) => layer.remove());
+        leafletLayersRef.current = [];
 
         const visitPositions = rows
-          .map((visit) => ({ visit, position: toGoogleLatLng(visit.outlet.toaDoX, visit.outlet.toaDoY) }))
-          .filter((item): item is { visit: RouteVisit; position: GoogleLatLng } => Boolean(item.position));
+          .map((visit) => ({ visit, position: toLatLng(visit.outlet.toaDoX, visit.outlet.toaDoY) }))
+          .filter((item): item is { visit: RouteVisit; position: LeafletLatLng } => Boolean(item.position));
         const startPositions = visibleStartPoints
-          .map((start) => ({ start, position: toGoogleLatLng(start.toaDoX, start.toaDoY) }))
-          .filter((item): item is { start: SaleStartPoint; position: GoogleLatLng } => Boolean(item.position));
+          .map((start) => ({ start, position: toLatLng(start.toaDoX, start.toaDoY) }))
+          .filter((item): item is { start: SaleStartPoint; position: LeafletLatLng } => Boolean(item.position));
 
         if (!visitPositions.length && !startPositions.length) {
-          setGoogleMapStatus("Không có tọa độ hợp lệ để hiển thị Google Maps.");
+          setMapStatus("Không có tọa độ hợp lệ để hiển thị trên OpenStreetMap. Đang dùng sơ đồ nội bộ.");
           return;
         }
 
         const firstPosition = visitPositions[0]?.position ?? startPositions[0].position;
-        const map = googleMapRef.current ?? new maps.Map(element, {
-          center: firstPosition,
-          zoom: 13,
-          mapTypeControl: false,
-          streetViewControl: false,
-          fullscreenControl: true,
-        });
-        googleMapRef.current = map;
+        const map = leafletMapRef.current ?? leaflet.map(element, { center: firstPosition, zoom: 13, scrollWheelZoom: true });
+        leafletMapRef.current = map;
 
-        const bounds = new maps.LatLngBounds();
-        [...visitPositions, ...startPositions].forEach((item) => bounds.extend(item.position));
+        if (!leafletLayersRef.current.length) {
+          leafletLayersRef.current.push(
+            leaflet.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+              attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+              maxZoom: 19,
+            }).addTo(map),
+          );
+        }
 
         for (const { start, position } of startPositions) {
-          googleOverlaysRef.current.push(
-            new maps.Marker({
-              position,
-              map,
-              title: `${start.tenDiemXuatPhat} · ${start.loaiDiem} · ${formatStartScope(start)}`,
-              label: { text: "S", color: "#ffffff", fontWeight: "800" },
-              icon: {
-                path: maps.SymbolPath.CIRCLE,
-                scale: 12,
-                fillColor: "#0f172a",
-                fillOpacity: 1,
-                strokeColor: "#ffffff",
-                strokeWeight: 2,
-              },
-            }),
-          );
+          const icon = leaflet.divIcon({
+            className: "route-map-start-marker",
+            html: markerHtml("S", "#0f172a"),
+            iconSize: [28, 28],
+            iconAnchor: [14, 14],
+          });
+          const marker = leaflet.marker(position, { icon, title: `${start.tenDiemXuatPhat} · ${formatStartScope(start)}` });
+          marker
+            .bindPopup(`<strong>${escapeHtml(start.tenDiemXuatPhat)}</strong><br/>${escapeHtml(start.loaiDiem)} · ${escapeHtml(formatStartScope(start))}<br/>X/Y: ${start.toaDoX}, ${start.toaDoY}`)
+            .addTo(map);
+          leafletLayersRef.current.push(marker);
         }
 
         for (const { visit, position } of visitPositions) {
-          googleOverlaysRef.current.push(
-            new maps.Marker({
-              position,
-              map,
-              title: `${visit.routeOrder}. ${visit.outlet.tenDiemBan} · ${visit.outlet.salePhuTrach} · ${visit.clusterId} · ${visit.frequency}`,
-              label: { text: String(visit.routeOrder), color: "#ffffff", fontWeight: "800" },
-              icon: {
-                path: maps.SymbolPath.CIRCLE,
-                scale: 10,
-                fillColor: frequencyColors[visit.frequency],
-                fillOpacity: 1,
-                strokeColor: "#ffffff",
-                strokeWeight: 2,
-              },
-            }),
-          );
+          const icon = leaflet.divIcon({
+            className: "route-map-outlet-marker",
+            html: markerHtml(String(visit.routeOrder), frequencyColors[visit.frequency]),
+            iconSize: [28, 28],
+            iconAnchor: [14, 14],
+          });
+          const marker = leaflet.marker(position, { icon, title: `${visit.routeOrder}. ${visit.outlet.tenDiemBan}` });
+          marker
+            .bindPopup(
+              `<strong>${visit.routeOrder}. ${escapeHtml(visit.outlet.tenDiemBan)}</strong><br/>${escapeHtml(visit.outlet.salePhuTrach)} · ${escapeHtml(visit.clusterId)} · ${escapeHtml(visit.frequency)}<br/>${escapeHtml(visit.outlet.diaChi)}<br/>X/Y: ${visit.outlet.toaDoX}, ${visit.outlet.toaDoY}`,
+            )
+            .addTo(map);
+          leafletLayersRef.current.push(marker);
         }
 
-        const routeGroups = new Map<string, GoogleLatLng[]>();
-        for (const { visit, position } of visitPositions.sort((a, b) => a.visit.plannedDate.localeCompare(b.visit.plannedDate) || a.visit.outlet.salePhuTrach.localeCompare(b.visit.outlet.salePhuTrach) || a.visit.routeOrder - b.visit.routeOrder)) {
+        const routeGroups = new Map<string, LeafletLatLng[]>();
+        const sortedPositions = visitPositions.sort((a, b) => a.visit.plannedDate.localeCompare(b.visit.plannedDate) || a.visit.outlet.salePhuTrach.localeCompare(b.visit.outlet.salePhuTrach) || a.visit.routeOrder - b.visit.routeOrder);
+        for (const { visit, position } of sortedPositions) {
           const key = `${visit.plannedDate}-${visit.outlet.salePhuTrach}`;
           if (!routeGroups.has(key)) {
             const start =
@@ -314,28 +353,20 @@ export default function RouteMapPage() {
 
         for (const path of routeGroups.values()) {
           if (path.length < 2) continue;
-          googleOverlaysRef.current.push(
-            new maps.Polyline({
-              path,
-              geodesic: true,
-              strokeColor: "#0f172a",
-              strokeOpacity: 0.55,
-              strokeWeight: 3,
-              map,
-            }),
-          );
+          leafletLayersRef.current.push(leaflet.polyline(path, { color: "#0f172a", opacity: 0.55, weight: 3 }).addTo(map));
         }
 
-        if (visitPositions.length + startPositions.length === 1) {
-          map.setCenter(firstPosition);
-          map.setZoom(14);
+        const allPositions = [...visitPositions.map((item) => item.position), ...startPositions.map((item) => item.position)];
+        if (allPositions.length === 1) {
+          map.setView(allPositions[0], 15);
         } else {
-          map.fitBounds(bounds);
+          map.fitBounds(leaflet.latLngBounds(allPositions), { padding: [28, 28] });
         }
-        setGoogleMapStatus(`Google Maps: ${visitPositions.length} điểm bán, ${startPositions.length} điểm xuất phát.`);
+        setTimeout(() => map.invalidateSize(), 50);
+        setMapStatus(`OpenStreetMap: ${visitPositions.length} điểm bán, ${startPositions.length} điểm xuất phát. Không cần API key.`);
       })
       .catch((error: Error) => {
-        if (!cancelled) setGoogleMapStatus(`${error.message} Đang dùng sơ đồ nội bộ.`);
+        if (!cancelled) setMapStatus(`${error.message} Đang dùng sơ đồ nội bộ.`);
       });
 
     return () => {
@@ -369,13 +400,13 @@ export default function RouteMapPage() {
     <div>
       <PageHeader
         title="Bản đồ tuyến"
-        description="Hiển thị marker điểm bán, điểm xuất phát và thứ tự đi trên Google Maps nếu đã cấu hình API key. App chỉ dùng map + marker, không gọi tối ưu đường để giữ chi phí thấp."
+        description="Hiển thị marker điểm bán, điểm xuất phát và thứ tự đi trên Leaflet + OpenStreetMap. Không cần Google Maps API key, không cần billing. Đường nối là thứ tự ghé dự kiến, chưa phải chỉ đường theo đường phố thật."
       />
 
       <div className="mb-4 grid gap-4 md:grid-cols-3">
         <MetricCard label="Điểm trên bản đồ" value={rows.length} hint={`${selectedSaleText} · ${selectedDateText}`} />
         <MetricCard label="Cụm đang hiển thị" value={new Set(rows.map((visit) => visit.clusterId)).size} hint="Gom theo cụm nhỏ, không theo quận lớn" />
-        <MetricCard label="Tổng khoảng cách tâm cụm" value={`${Math.round(totalDistance)} km`} hint="Ước tính từ dữ liệu mẫu" />
+        <MetricCard label="Tổng khoảng cách tâm cụm" value={`${Math.round(totalDistance)} km`} hint="Ước tính từ dữ liệu mẫu/import" />
       </div>
 
       <div className="mb-4 rounded-lg border border-line bg-white p-4 shadow-soft">
@@ -404,8 +435,8 @@ export default function RouteMapPage() {
             ))}
           </select>
           <input className="h-10 rounded-md border border-line px-3 text-sm" value={startName} onChange={(event) => setStartName(event.target.value)} placeholder="Tên điểm xuất phát" />
-          <input className="h-10 rounded-md border border-line px-3 text-sm" value={startX} onChange={(event) => setStartX(event.target.value)} placeholder="Tọa độ X" type="number" step="0.01" />
-          <input className="h-10 rounded-md border border-line px-3 text-sm" value={startY} onChange={(event) => setStartY(event.target.value)} placeholder="Tọa độ Y" type="number" step="0.01" />
+          <input className="h-10 rounded-md border border-line px-3 text-sm" value={startX} onChange={(event) => setStartX(event.target.value)} placeholder="Tọa độ X" type="number" step="0.0001" />
+          <input className="h-10 rounded-md border border-line px-3 text-sm" value={startY} onChange={(event) => setStartY(event.target.value)} placeholder="Tọa độ Y" type="number" step="0.0001" />
           <input className="h-10 rounded-md border border-line px-3 text-sm" value={startNote} onChange={(event) => setStartNote(event.target.value)} placeholder="Ghi chú" />
           <button className="h-10 rounded-md bg-ink px-4 text-sm font-bold text-white disabled:opacity-50" disabled={startScope === "date" && !startDate} onClick={saveSelectedStartPoint}>
             Lưu START
@@ -481,12 +512,12 @@ export default function RouteMapPage() {
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="overflow-hidden rounded-lg border border-line bg-white shadow-soft">
           <div className="border-b border-line px-4 py-3">
-            <div className="font-bold text-ink">Google Maps tuyến bán hàng</div>
-            <div className="text-sm text-muted">{googleMapStatus}</div>
+            <div className="font-bold text-ink">OpenStreetMap tuyến bán hàng</div>
+            <div className="text-sm text-muted">{mapStatus}</div>
           </div>
           <div className="bg-slate-50 p-4">
-            {showGoogleMap ? (
-              <div ref={googleMapElementRef} className="h-[520px] w-full rounded-md bg-white" />
+            {rows.length && !showInternalMap ? (
+              <div ref={mapElementRef} className="h-[560px] w-full rounded-md bg-white" />
             ) : points.length ? (
               <svg className="h-auto w-full rounded-md bg-white" viewBox="0 0 920 520" role="img" aria-label="Bản đồ tuyến theo tọa độ">
                 <defs>
@@ -499,7 +530,7 @@ export default function RouteMapPage() {
                   <polyline key={key} points={value} fill="none" stroke="#0f172a" strokeDasharray={date === "all" || sale === "all" ? "7 7" : undefined} strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" opacity="0.45" />
                 ))}
                 {startMarkers.map(({ start, point }) => (
-                  <g key={start.salePhuTrach}>
+                  <g key={`${start.salePhuTrach}-${start.date ?? "default"}`}>
                     <rect x={point.x - 20} y={point.y - 13} width="40" height="26" rx="7" fill="#0f172a" />
                     <text x={point.x} y={point.y + 4} textAnchor="middle" className="fill-white text-[10px] font-bold">
                       START
