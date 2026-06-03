@@ -106,6 +106,17 @@ function toLatLng(x: number, y: number): LeafletLatLng | undefined {
   return [y, x];
 }
 
+function isVietnamCoordinate(x: number, y: number) {
+  return x >= 102 && x <= 110 && y >= 8 && y <= 24;
+}
+
+function hasRealVietnamCoordinates(visits: RouteVisit[], starts: SaleStartPoint[]) {
+  const outletCoordinates = visits.map((visit) => [visit.outlet.toaDoX, visit.outlet.toaDoY] as const);
+  const startCoordinates = starts.map((start) => [start.toaDoX, start.toaDoY] as const);
+  const coordinates = [...outletCoordinates, ...startCoordinates];
+  return coordinates.length > 0 && coordinates.every(([x, y]) => isVietnamCoordinate(x, y));
+}
+
 function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, (char) => {
     const entities: Record<string, string> = {
@@ -267,11 +278,16 @@ export default function RouteMapPage() {
   const selectedSaleText = sale === "all" ? "tất cả sale" : sale;
   const selectedDateText = date === "all" ? "tất cả ngày" : formatDateValue(date);
   const totalDistance = rows.reduce((sum, visit) => sum + visit.outlet.khoangCachTamCumKm, 0);
-  const showInternalMap = mapStatus.includes("sơ đồ nội bộ");
+  const useStreetMap = hasRealVietnamCoordinates(rows, visibleStartPoints);
+  const showInternalMap = !useStreetMap || mapStatus.includes("sơ đồ nội bộ");
 
   useEffect(() => {
     const element = mapElementRef.current;
     if (!element || !rows.length) return;
+    if (!hasRealVietnamCoordinates(rows, visibleStartPoints)) {
+      setMapStatus("Tọa độ hiện tại là X/Y demo, đang dùng sơ đồ nội bộ. Muốn hiện bản đồ thật, nhập toaDoX=kinh độ và toaDoY=vĩ độ tại Việt Nam.");
+      return;
+    }
 
     let cancelled = false;
     setMapStatus("Đang tải bản đồ OpenStreetMap...");
@@ -400,7 +416,7 @@ export default function RouteMapPage() {
     <div>
       <PageHeader
         title="Bản đồ tuyến"
-        description="Hiển thị marker điểm bán, điểm xuất phát và thứ tự đi trên Leaflet + OpenStreetMap. Không cần Google Maps API key, không cần billing. Đường nối là thứ tự ghé dự kiến, chưa phải chỉ đường theo đường phố thật."
+        description="Hiển thị marker điểm bán, điểm xuất phát và thứ tự đi. Nếu tọa độ là kinh độ/vĩ độ Việt Nam, app dùng Leaflet + OpenStreetMap; nếu là X/Y demo, app dùng sơ đồ nội bộ để tránh nhảy sai bản đồ."
       />
 
       <div className="mb-4 grid gap-4 md:grid-cols-3">
@@ -512,7 +528,7 @@ export default function RouteMapPage() {
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="overflow-hidden rounded-lg border border-line bg-white shadow-soft">
           <div className="border-b border-line px-4 py-3">
-            <div className="font-bold text-ink">OpenStreetMap tuyến bán hàng</div>
+            <div className="font-bold text-ink">{useStreetMap ? "OpenStreetMap tuyến bán hàng" : "Sơ đồ tuyến nội bộ"}</div>
             <div className="text-sm text-muted">{mapStatus}</div>
           </div>
           <div className="bg-slate-50 p-4">
