@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { FrequencyBadge } from "@/components/FrequencyBadge";
 import { MetricCard } from "@/components/MetricCard";
 import { PageHeader } from "@/components/PageHeader";
@@ -19,6 +19,28 @@ type Point = {
   y: number;
 };
 
+type GoogleLatLng = { lat: number; lng: number };
+type GoogleMap = {
+  fitBounds: (bounds: GoogleBounds) => void;
+  setCenter: (position: GoogleLatLng) => void;
+  setZoom: (zoom: number) => void;
+};
+type GoogleBounds = { extend: (position: GoogleLatLng) => void };
+type GoogleOverlay = { setMap: (map: GoogleMap | null) => void };
+type GoogleMapsApi = {
+  Map: new (element: HTMLElement, options: { center: GoogleLatLng; zoom: number; mapTypeControl?: boolean; streetViewControl?: boolean; fullscreenControl?: boolean }) => GoogleMap;
+  Marker: new (options: { position: GoogleLatLng; map: GoogleMap; title?: string; label?: { text: string; color: string; fontWeight: string }; icon?: unknown }) => GoogleOverlay;
+  Polyline: new (options: { path: GoogleLatLng[]; geodesic: boolean; strokeColor: string; strokeOpacity: number; strokeWeight: number; map: GoogleMap }) => GoogleOverlay;
+  LatLngBounds: new () => GoogleBounds;
+  SymbolPath: { CIRCLE: number };
+};
+
+declare global {
+  interface Window {
+    google?: { maps: GoogleMapsApi };
+  }
+}
+
 type StartPointType = SaleStartPoint["loaiDiem"];
 
 const startPointTypes: StartPointType[] = ["Văn phòng", "Kho", "Nhà sale", "Điểm hẹn"];
@@ -31,6 +53,41 @@ const frequencyColors: Record<Frequency, string> = {
   "F0.5": "#64748b",
   "F0.3": "#71717a",
 };
+
+const googleMapsApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+let googleMapsLoader: Promise<GoogleMapsApi> | undefined;
+
+function loadGoogleMaps() {
+  if (typeof window === "undefined") return Promise.reject(new Error("Google Maps chỉ chạy trên trình duyệt."));
+  if (window.google?.maps) return Promise.resolve(window.google.maps);
+  if (!googleMapsApiKey) return Promise.reject(new Error("Thiếu NEXT_PUBLIC_GOOGLE_MAPS_API_KEY."));
+  if (!googleMapsLoader) {
+    googleMapsLoader = new Promise((resolve, reject) => {
+      const existing = document.querySelector<HTMLScriptElement>("script[data-route-planner-google-maps]");
+      if (existing) {
+        existing.addEventListener("load", () => window.google?.maps ? resolve(window.google.maps) : reject(new Error("Không tải được Google Maps.")), { once: true });
+        existing.addEventListener("error", () => reject(new Error("Không tải được Google Maps.")), { once: true });
+        return;
+      }
+
+      const script = document.createElement("script");
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(googleMapsApiKey)}&v=weekly`;
+      script.async = true;
+      script.defer = true;
+      script.dataset.routePlannerGoogleMaps = "true";
+      script.addEventListener("load", () => window.google?.maps ? resolve(window.google.maps) : reject(new Error("Không tải được Google Maps.")), { once: true });
+      script.addEventListener("error", () => reject(new Error("Không tải được Google Maps.")), { once: true });
+      document.head.appendChild(script);
+    });
+  }
+  return googleMapsLoader;
+}
+
+function toGoogleLatLng(x: number, y: number): GoogleLatLng | undefined {
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return undefined;
+  if (x < -180 || x > 180 || y < -90 || y > 90) return undefined;
+  return { lat: y, lng: x };
+}
 
 function formatDateValue(dateValue: string) {
   const date = new Date(`${dateValue}T00:00:00`);
@@ -79,6 +136,9 @@ function uniqueDates(plan: RouteVisit[]) {
 
 export default function RouteMapPage() {
   const year = new Date().getFullYear();
+  const googleMapElementRef = useRef<HTMLDivElement>(null);
+  const googleMapRef = useRef<GoogleMap | null>(null);
+  const googleOverlaysRef = useRef<GoogleOverlay[]>([]);
   const [month, setMonth] = useState(new Date().getMonth() + 1);
   const [date, setDate] = useState("all");
   const [week, setWeek] = useState<"all" | WeekKey>("all");
@@ -97,6 +157,7 @@ export default function RouteMapPage() {
   const [startScope, setStartScope] = useState<"default" | "date">("default");
   const [startDate, setStartDate] = useState("");
   const [salesConfig, setSalesConfig] = useState<SalesTerritory[]>(salesTerritories);
+  const [googleMapStatus, setGoogleMapStatus] = useState(googleMapsApiKey ? "Đang tải Google Maps..." : "Chưa cấu hình Google Maps API key, đang dùng sơ đồ nội bộ.");
 
   useEffect(() => {
     const storedOutlets = loadOutlets();
@@ -159,6 +220,128 @@ export default function RouteMapPage() {
   const selectedSaleText = sale === "all" ? "tất cả sale" : sale;
   const selectedDateText = date === "all" ? "tất cả ngày" : formatDateValue(date);
   const totalDistance = rows.reduce((sum, visit) => sum + visit.outlet.khoangCachTamCumKm, 0);
+  const showGoogleMap = Boolean(googleMapsApiKey) && !googleMapStatus.includes("Đang dùng sơ đồ nội bộ");
+
+  useEffect(() => {
+    if (!googleMapsApiKey) {
+      setGoogleMapStatus("Chưa cấu hình Google Maps API key, đang dùng sơ đồ nội bộ.");
+      return;
+    }
+    const element = googleMapElementRef.current;
+    if (!element) return;
+
+    let cancelled = false;
+    loadGoogleMaps()
+      .then((maps) => {
+        if (cancelled) return;
+        googleOverlaysRef.current.forEach((overlay) => overlay.setMap(null));
+        googleOverlaysRef.current = [];
+
+        const visitPositions = rows
+          .map((visit) => ({ visit, position: toGoogleLatLng(visit.outlet.toaDoX, visit.outlet.toaDoY) }))
+          .filter((item): item is { visit: RouteVisit; position: GoogleLatLng } => Boolean(item.position));
+        const startPositions = visibleStartPoints
+          .map((start) => ({ start, position: toGoogleLatLng(start.toaDoX, start.toaDoY) }))
+          .filter((item): item is { start: SaleStartPoint; position: GoogleLatLng } => Boolean(item.position));
+
+        if (!visitPositions.length && !startPositions.length) {
+          setGoogleMapStatus("Không có tọa độ hợp lệ để hiển thị Google Maps.");
+          return;
+        }
+
+        const firstPosition = visitPositions[0]?.position ?? startPositions[0].position;
+        const map = googleMapRef.current ?? new maps.Map(element, {
+          center: firstPosition,
+          zoom: 13,
+          mapTypeControl: false,
+          streetViewControl: false,
+          fullscreenControl: true,
+        });
+        googleMapRef.current = map;
+
+        const bounds = new maps.LatLngBounds();
+        [...visitPositions, ...startPositions].forEach((item) => bounds.extend(item.position));
+
+        for (const { start, position } of startPositions) {
+          googleOverlaysRef.current.push(
+            new maps.Marker({
+              position,
+              map,
+              title: `${start.tenDiemXuatPhat} · ${start.loaiDiem} · ${formatStartScope(start)}`,
+              label: { text: "S", color: "#ffffff", fontWeight: "800" },
+              icon: {
+                path: maps.SymbolPath.CIRCLE,
+                scale: 12,
+                fillColor: "#0f172a",
+                fillOpacity: 1,
+                strokeColor: "#ffffff",
+                strokeWeight: 2,
+              },
+            }),
+          );
+        }
+
+        for (const { visit, position } of visitPositions) {
+          googleOverlaysRef.current.push(
+            new maps.Marker({
+              position,
+              map,
+              title: `${visit.routeOrder}. ${visit.outlet.tenDiemBan} · ${visit.outlet.salePhuTrach} · ${visit.clusterId} · ${visit.frequency}`,
+              label: { text: String(visit.routeOrder), color: "#ffffff", fontWeight: "800" },
+              icon: {
+                path: maps.SymbolPath.CIRCLE,
+                scale: 10,
+                fillColor: frequencyColors[visit.frequency],
+                fillOpacity: 1,
+                strokeColor: "#ffffff",
+                strokeWeight: 2,
+              },
+            }),
+          );
+        }
+
+        const routeGroups = new Map<string, GoogleLatLng[]>();
+        for (const { visit, position } of visitPositions.sort((a, b) => a.visit.plannedDate.localeCompare(b.visit.plannedDate) || a.visit.outlet.salePhuTrach.localeCompare(b.visit.outlet.salePhuTrach) || a.visit.routeOrder - b.visit.routeOrder)) {
+          const key = `${visit.plannedDate}-${visit.outlet.salePhuTrach}`;
+          if (!routeGroups.has(key)) {
+            const start =
+              startPositions.find((item) => item.start.salePhuTrach === visit.outlet.salePhuTrach && item.start.date === visit.plannedDate) ??
+              startPositions.find((item) => item.start.salePhuTrach === visit.outlet.salePhuTrach && !item.start.date);
+            routeGroups.set(key, start ? [start.position] : []);
+          }
+          routeGroups.get(key)?.push(position);
+        }
+
+        for (const path of routeGroups.values()) {
+          if (path.length < 2) continue;
+          googleOverlaysRef.current.push(
+            new maps.Polyline({
+              path,
+              geodesic: true,
+              strokeColor: "#0f172a",
+              strokeOpacity: 0.55,
+              strokeWeight: 3,
+              map,
+            }),
+          );
+        }
+
+        if (visitPositions.length + startPositions.length === 1) {
+          map.setCenter(firstPosition);
+          map.setZoom(14);
+        } else {
+          map.fitBounds(bounds);
+        }
+        setGoogleMapStatus(`Google Maps: ${visitPositions.length} điểm bán, ${startPositions.length} điểm xuất phát.`);
+      })
+      .catch((error: Error) => {
+        if (!cancelled) setGoogleMapStatus(`${error.message} Đang dùng sơ đồ nội bộ.`);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [rows, visibleStartPoints]);
 
   function saveSelectedStartPoint() {
     const x = Number(startX);
@@ -186,7 +369,7 @@ export default function RouteMapPage() {
     <div>
       <PageHeader
         title="Bản đồ tuyến"
-        description="Xem vị trí điểm bán bằng tọa độ X/Y hiện có và đường nối theo STT đi trong ngày. Đây là bản đồ demo nội bộ, chưa dùng Google Maps nên không cần API key."
+        description="Hiển thị marker điểm bán, điểm xuất phát và thứ tự đi trên Google Maps nếu đã cấu hình API key. App chỉ dùng map + marker, không gọi tối ưu đường để giữ chi phí thấp."
       />
 
       <div className="mb-4 grid gap-4 md:grid-cols-3">
@@ -298,11 +481,13 @@ export default function RouteMapPage() {
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="overflow-hidden rounded-lg border border-line bg-white shadow-soft">
           <div className="border-b border-line px-4 py-3">
-            <div className="font-bold text-ink">Sơ đồ tuyến theo tọa độ</div>
-            <div className="text-sm text-muted">Đường nối đi theo thứ tự từng ngày của từng sale. Chọn 1 ngày + 1 sale để nhìn tuyến rõ nhất.</div>
+            <div className="font-bold text-ink">Google Maps tuyến bán hàng</div>
+            <div className="text-sm text-muted">{googleMapStatus}</div>
           </div>
           <div className="bg-slate-50 p-4">
-            {points.length ? (
+            {showGoogleMap ? (
+              <div ref={googleMapElementRef} className="h-[520px] w-full rounded-md bg-white" />
+            ) : points.length ? (
               <svg className="h-auto w-full rounded-md bg-white" viewBox="0 0 920 520" role="img" aria-label="Bản đồ tuyến theo tọa độ">
                 <defs>
                   <pattern id="map-grid" width="46" height="46" patternUnits="userSpaceOnUse">

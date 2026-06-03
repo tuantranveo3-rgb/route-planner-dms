@@ -11,6 +11,16 @@ npm run dev
 
 Mở `http://localhost:3000`.
 
+## Google Maps
+
+Trang `Bản đồ tuyến` có thể hiển thị marker trên Google Maps nếu cấu hình API key:
+
+```bash
+NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=your_google_maps_api_key
+```
+
+Ở Vercel, thêm biến này trong Project Settings -> Environment Variables rồi redeploy. App chỉ dùng Google Maps để hiển thị marker, START và polyline theo STT đi; không gọi Routes/Distance Matrix/Optimization nên chi phí thấp. Nếu chưa có API key, app tự dùng sơ đồ tọa độ nội bộ làm fallback.
+
 ## Kiểm tra
 
 ```bash
