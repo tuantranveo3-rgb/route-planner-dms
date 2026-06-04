@@ -5,12 +5,13 @@ import { DataTable, type Column } from "@/components/DataTable";
 import { FrequencyBadge } from "@/components/FrequencyBadge";
 import { MetricCard } from "@/components/MetricCard";
 import { PageHeader } from "@/components/PageHeader";
+import { loadOutlets } from "@/lib/outlet-storage";
 import { buildCarryoversForNextMonth, buildLowFrequencyHistoryCarryovers, EXECUTION_STORAGE_KEY, recordsForPeriod, summarizeExecution } from "@/lib/route-execution";
 import { generateMonthlyRoutePlan } from "@/lib/route-logic";
-import { clusters, saleOwners, salesTerritories, seedOutlets } from "@/lib/seed-data";
+import { clusters, salesTerritories, seedOutlets } from "@/lib/seed-data";
 import { loadSalesConfig } from "@/lib/sales-config";
 import { loadPlannerSettings } from "@/lib/settings-storage";
-import type { Frequency } from "@/types/outlet";
+import type { Frequency, Outlet } from "@/types/outlet";
 import type { PlannerSettings, RouteExecutionRecord, RouteVisit } from "@/types/route";
 import { DEFAULT_SETTINGS } from "@/lib/route-logic";
 import type { SalesTerritory } from "@/types/territory";
@@ -41,24 +42,27 @@ export default function ReportsPage() {
   const [records, setRecords] = useState<RouteExecutionRecord[]>([]);
   const [settings, setSettings] = useState<PlannerSettings>(DEFAULT_SETTINGS);
   const [salesConfig, setSalesConfig] = useState<SalesTerritory[]>(salesTerritories);
+  const [outlets, setOutlets] = useState<Outlet[]>(seedOutlets);
 
   useEffect(() => {
     const raw = window.localStorage.getItem(EXECUTION_STORAGE_KEY);
     if (raw) setRecords(JSON.parse(raw) as RouteExecutionRecord[]);
     setSettings(loadPlannerSettings());
     setSalesConfig(loadSalesConfig());
+    setOutlets(loadOutlets());
   }, []);
 
+  const saleOptions = useMemo(() => Array.from(new Set(outlets.map((outlet) => outlet.salePhuTrach))).filter(Boolean), [outlets]);
   const previousPeriod = getPreviousPeriod(month, year);
-  const previousPlan = useMemo(() => generateMonthlyRoutePlan(previousPeriod.month, previousPeriod.year, seedOutlets, clusters, settings, [], [], salesConfig), [previousPeriod.month, previousPeriod.year, settings, salesConfig]);
+  const previousPlan = useMemo(() => generateMonthlyRoutePlan(previousPeriod.month, previousPeriod.year, outlets, clusters, settings, [], [], salesConfig), [previousPeriod.month, previousPeriod.year, outlets, settings, salesConfig]);
   const previousRecords = useMemo(() => recordsForPeriod(records, previousPeriod.month, previousPeriod.year), [records, previousPeriod.month, previousPeriod.year]);
   const carryovers = useMemo(() => {
     const previousCarryovers = buildCarryoversForNextMonth(previousPlan, previousRecords);
-    const historyCarryovers = buildLowFrequencyHistoryCarryovers(seedOutlets, records, month, year, settings);
+    const historyCarryovers = buildLowFrequencyHistoryCarryovers(outlets, records, month, year, settings);
     const byOutlet = new Map([...previousCarryovers, ...historyCarryovers].map((item) => [item.outletId, item]));
     return [...byOutlet.values()];
-  }, [previousPlan, previousRecords, records, month, year, settings]);
-  const plan = useMemo(() => generateMonthlyRoutePlan(month, year, seedOutlets, clusters, settings, carryovers, [], salesConfig), [month, year, settings, carryovers, salesConfig]);
+  }, [previousPlan, previousRecords, outlets, records, month, year, settings]);
+  const plan = useMemo(() => generateMonthlyRoutePlan(month, year, outlets, clusters, settings, carryovers, [], salesConfig), [month, year, outlets, settings, carryovers, salesConfig]);
   const currentRecords = useMemo(() => recordsForPeriod(records, month, year), [records, month, year]);
   const filteredPlan = sale === "all" ? plan : plan.filter((visit) => visit.outlet.salePhuTrach === sale);
   const summary = summarizeExecution(filteredPlan, currentRecords);
@@ -75,7 +79,13 @@ export default function ReportsPage() {
     { F8: 0, F4: 0, F2: 0, F1: 0, "F0.5": 0, "F0.3": 0 },
   );
 
-  const saleRows: SaleReportRow[] = saleOwners.map((owner) => {
+  useEffect(() => {
+    if (sale !== "all" && !saleOptions.includes(sale)) {
+      setSale("all");
+    }
+  }, [sale, saleOptions]);
+
+  const saleRows: SaleReportRow[] = saleOptions.map((owner) => {
     const ownerPlan = plan.filter((visit) => visit.outlet.salePhuTrach === owner);
     const ownerSummary = summarizeExecution(ownerPlan, currentRecords);
     const ownerFreq = ownerPlan.reduce<Record<Frequency, number>>(
@@ -141,7 +151,7 @@ export default function ReportsPage() {
         </select>
         <select className="h-10 rounded-md border border-line px-3 text-sm" value={sale} onChange={(event) => setSale(event.target.value)}>
           <option value="all">Tất cả sale</option>
-          {saleOwners.map((owner) => (
+          {saleOptions.map((owner) => (
             <option key={owner} value={owner}>
               {owner}
             </option>
