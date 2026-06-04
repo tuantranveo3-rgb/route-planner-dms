@@ -110,11 +110,12 @@ function isVietnamCoordinate(x: number, y: number) {
   return x >= 102 && x <= 110 && y >= 8 && y <= 24;
 }
 
-function hasRealVietnamCoordinates(visits: RouteVisit[], starts: SaleStartPoint[]) {
-  const outletCoordinates = visits.map((visit) => [visit.outlet.toaDoX, visit.outlet.toaDoY] as const);
-  const startCoordinates = starts.map((start) => [start.toaDoX, start.toaDoY] as const);
-  const coordinates = [...outletCoordinates, ...startCoordinates];
-  return coordinates.length > 0 && coordinates.every(([x, y]) => isVietnamCoordinate(x, y));
+function hasRealVietnamOutletCoordinates(visits: RouteVisit[]) {
+  return visits.length > 0 && visits.every((visit) => isVietnamCoordinate(visit.outlet.toaDoX, visit.outlet.toaDoY));
+}
+
+function isValidVietnamStartPoint(point: SaleStartPoint) {
+  return isVietnamCoordinate(point.toaDoX, point.toaDoY);
 }
 
 function escapeHtml(value: string) {
@@ -220,9 +221,12 @@ export default function RouteMapPage() {
 
   useEffect(() => {
     const storedOutlets = loadOutlets();
+    const currentSales = new Set(storedOutlets.map((outlet) => outlet.salePhuTrach).filter(Boolean));
+    const cleanedStartPoints = loadStartPoints().filter((point) => currentSales.has(point.salePhuTrach));
     setOutlets(storedOutlets);
-    setEditingSale(Array.from(new Set(storedOutlets.map((outlet) => outlet.salePhuTrach)))[0] ?? "");
-    setStartPoints(loadStartPoints());
+    setEditingSale(Array.from(currentSales)[0] ?? "");
+    setStartPoints(cleanedStartPoints);
+    saveStartPoints(cleanedStartPoints);
     setSalesConfig(loadSalesConfig());
     setUnavailableDays(loadSaleUnavailableDays());
   }, []);
@@ -241,7 +245,14 @@ export default function RouteMapPage() {
   }, [editingSale, selectedStartPoint, startDate, startPoints, startScope]);
 
   const saleOptions = useMemo(() => Array.from(new Set(outlets.map((outlet) => outlet.salePhuTrach))).filter(Boolean), [outlets]);
-  const plan = useMemo(() => generateMonthlyRoutePlan(month, year, outlets, clusters, DEFAULT_SETTINGS, [], startPoints, salesConfig, unavailableDays), [month, year, outlets, startPoints, salesConfig, unavailableDays]);
+  const currentSaleSet = useMemo(() => new Set(saleOptions), [saleOptions]);
+  const currentStartPoints = useMemo(() => startPoints.filter((point) => currentSaleSet.has(point.salePhuTrach)), [currentSaleSet, startPoints]);
+  const outletsUseStreetCoordinates = useMemo(() => outlets.length > 0 && outlets.every((outlet) => isVietnamCoordinate(outlet.toaDoX, outlet.toaDoY)), [outlets]);
+  const startPointsForPlanning = useMemo(
+    () => (outletsUseStreetCoordinates ? currentStartPoints.filter(isValidVietnamStartPoint) : currentStartPoints),
+    [currentStartPoints, outletsUseStreetCoordinates],
+  );
+  const plan = useMemo(() => generateMonthlyRoutePlan(month, year, outlets, clusters, DEFAULT_SETTINGS, [], startPointsForPlanning, salesConfig, unavailableDays), [month, year, outlets, startPointsForPlanning, salesConfig, unavailableDays]);
   const dateCandidateRows = plan
     .filter((visit) => visit.status !== "CS từ xa")
     .filter((visit) => week === "all" || visit.week === week)
@@ -257,8 +268,8 @@ export default function RouteMapPage() {
     .filter((visit) => cluster === "all" || visit.clusterId === cluster)
     .filter((visit) => frequency === "all" || visit.frequency === frequency)
     .sort((a, b) => a.plannedDate.localeCompare(b.plannedDate) || a.outlet.salePhuTrach.localeCompare(b.outlet.salePhuTrach) || a.routeOrder - b.routeOrder);
-  const dailyStartBySale = new Map(startPoints.filter((point) => point.date).map((point) => [`${point.date}-${point.salePhuTrach}`, point]));
-  const defaultStartBySale = new Map(startPoints.filter((point) => !point.date).map((point) => [point.salePhuTrach, point]));
+  const dailyStartBySale = new Map(currentStartPoints.filter((point) => point.date).map((point) => [`${point.date}-${point.salePhuTrach}`, point]));
+  const defaultStartBySale = new Map(currentStartPoints.filter((point) => !point.date).map((point) => [point.salePhuTrach, point]));
   const visibleStartPoints = Array.from(
     new Map(
       rows.map((visit) => {
@@ -267,9 +278,12 @@ export default function RouteMapPage() {
       }),
     ).values(),
   ).filter((point): point is SaleStartPoint => Boolean(point));
-  const bounds = rows.length ? getBounds(rows, visibleStartPoints) : undefined;
+  const validVisibleStartPoints = visibleStartPoints.filter(isValidVietnamStartPoint);
+  const useStreetMap = hasRealVietnamOutletCoordinates(rows);
+  const startPointsForDisplay = useStreetMap ? validVisibleStartPoints : visibleStartPoints;
+  const bounds = rows.length ? getBounds(rows, startPointsForDisplay) : undefined;
   const points = bounds ? rows.map((visit) => ({ visit, point: projectPoint(visit, bounds) })) : [];
-  const startMarkers = bounds ? visibleStartPoints.map((start) => ({ start, point: projectXY(start.toaDoX, start.toaDoY, bounds) })) : [];
+  const startMarkers = bounds ? startPointsForDisplay.map((start) => ({ start, point: projectXY(start.toaDoX, start.toaDoY, bounds) })) : [];
   const dailyStartPointBySale = new Map(startMarkers.filter((marker) => marker.start.date).map((marker) => [`${marker.start.date}-${marker.start.salePhuTrach}`, marker.point]));
   const defaultStartPointBySale = new Map(startMarkers.filter((marker) => !marker.start.date).map((marker) => [marker.start.salePhuTrach, marker.point]));
   const lineGroups = new Map<string, string>();
@@ -286,7 +300,6 @@ export default function RouteMapPage() {
   const selectedSaleText = sale === "all" ? "tất cả sale" : sale;
   const selectedDateText = date === "all" ? "tất cả ngày" : formatDateValue(date);
   const totalDistance = rows.reduce((sum, visit) => sum + visit.outlet.khoangCachTamCumKm, 0);
-  const useStreetMap = hasRealVietnamCoordinates(rows, visibleStartPoints);
   const showInternalMap = !useStreetMap || mapStatus.includes("sơ đồ nội bộ");
 
   useEffect(() => {
@@ -294,6 +307,15 @@ export default function RouteMapPage() {
       setDate("all");
     }
   }, [date, dates]);
+
+  useEffect(() => {
+    if (sale !== "all" && !saleOptions.includes(sale)) {
+      setSale("all");
+    }
+    if (editingSale && !saleOptions.includes(editingSale)) {
+      setEditingSale(saleOptions[0] ?? "");
+    }
+  }, [editingSale, sale, saleOptions]);
 
   useEffect(() => {
     const element = mapElementRef.current;
@@ -304,7 +326,7 @@ export default function RouteMapPage() {
       setMapStatus("Không có điểm phù hợp với bộ lọc hiện tại. Hãy chọn Tất cả ngày hoặc ngày có tuyến của sale này.");
       return;
     }
-    if (!hasRealVietnamCoordinates(rows, visibleStartPoints)) {
+    if (!hasRealVietnamOutletCoordinates(rows)) {
       setMapStatus("Tọa độ hiện tại là X/Y demo, đang dùng sơ đồ nội bộ. Muốn hiện bản đồ thật, nhập toaDoX=kinh độ và toaDoY=vĩ độ tại Việt Nam.");
       return;
     }
@@ -322,7 +344,7 @@ export default function RouteMapPage() {
         const visitPositions = rows
           .map((visit) => ({ visit, position: toLatLng(visit.outlet.toaDoX, visit.outlet.toaDoY) }))
           .filter((item): item is { visit: RouteVisit; position: LeafletLatLng } => Boolean(item.position));
-        const startPositions = visibleStartPoints
+        const startPositions = validVisibleStartPoints
           .map((start) => ({ start, position: toLatLng(start.toaDoX, start.toaDoY) }))
           .filter((item): item is { start: SaleStartPoint; position: LeafletLatLng } => Boolean(item.position));
 
@@ -408,7 +430,7 @@ export default function RouteMapPage() {
     return () => {
       cancelled = true;
     };
-  }, [rows, visibleStartPoints]);
+  }, [rows, validVisibleStartPoints]);
 
   function saveSelectedStartPoint() {
     const x = Number(startX);
@@ -479,7 +501,7 @@ export default function RouteMapPage() {
           </button>
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
-          {startPoints.map((point) => (
+          {currentStartPoints.map((point) => (
             <button
               key={`${point.salePhuTrach}-${point.date ?? "default"}`}
               className={`rounded-full border px-3 py-1 text-xs font-semibold ${editingSale === point.salePhuTrach ? "border-ink bg-ink text-white" : "border-line bg-slate-50 text-slate-700"}`}
