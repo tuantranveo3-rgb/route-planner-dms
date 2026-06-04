@@ -6,7 +6,7 @@ import { MetricCard } from "@/components/MetricCard";
 import { PageHeader } from "@/components/PageHeader";
 import { loadOutlets } from "@/lib/outlet-storage";
 import { clusters, salesTerritories, seedOutlets } from "@/lib/seed-data";
-import { DEFAULT_SETTINGS, generateMonthlyRoutePlan } from "@/lib/route-logic";
+import { DEFAULT_SETTINGS, generateMonthlyRoutePlan, getPlannedDate, weeks } from "@/lib/route-logic";
 import { loadSalesConfig } from "@/lib/sales-config";
 import { loadSaleUnavailableDays } from "@/lib/sale-unavailable";
 import { loadStartPoints, saveStartPoints } from "@/lib/start-points";
@@ -193,6 +193,8 @@ function uniqueDates(plan: RouteVisit[]) {
   return Array.from(new Set(plan.map((visit) => visit.plannedDate))).sort();
 }
 
+const workingDayNames = ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7"];
+
 export default function RouteMapPage() {
   const year = new Date().getFullYear();
   const mapElementRef = useRef<HTMLDivElement>(null);
@@ -259,7 +261,13 @@ export default function RouteMapPage() {
     .filter((visit) => sale === "all" || visit.outlet.salePhuTrach === sale)
     .filter((visit) => cluster === "all" || visit.clusterId === cluster)
     .filter((visit) => frequency === "all" || visit.frequency === frequency);
-  const dates = useMemo(() => uniqueDates(dateCandidateRows), [dateCandidateRows]);
+  const routeDates = useMemo(() => uniqueDates(dateCandidateRows), [dateCandidateRows]);
+  const dateOptions = useMemo(() => {
+    const selectedWeeks = week === "all" ? weeks : [week];
+    const calendarDates = selectedWeeks.flatMap((weekKey) => workingDayNames.map((dayName) => getPlannedDate(year, month, weekKey, dayName)));
+    return Array.from(new Set([...calendarDates, ...routeDates])).sort();
+  }, [month, routeDates, week, year]);
+  const routeDateSet = useMemo(() => new Set(routeDates), [routeDates]);
   const rows = plan
     .filter((visit) => visit.status !== "CS từ xa")
     .filter((visit) => date === "all" || visit.plannedDate === date)
@@ -303,10 +311,10 @@ export default function RouteMapPage() {
   const showInternalMap = !useStreetMap || mapStatus.includes("sơ đồ nội bộ");
 
   useEffect(() => {
-    if (date !== "all" && !dates.includes(date)) {
+    if (date !== "all" && !dateOptions.includes(date)) {
       setDate("all");
     }
-  }, [date, dates]);
+  }, [date, dateOptions]);
 
   useEffect(() => {
     if (sale !== "all" && !saleOptions.includes(sale)) {
@@ -527,9 +535,10 @@ export default function RouteMapPage() {
         </select>
         <select className="h-10 rounded-md border border-line px-3 text-sm" value={date} onChange={(event) => setDate(event.target.value)}>
           <option value="all">Tất cả ngày</option>
-          {dates.map((item) => (
+          {dateOptions.map((item) => (
             <option key={item} value={item}>
               {formatDateValue(item)}
+              {routeDateSet.has(item) ? "" : " - không có tuyến"}
             </option>
           ))}
         </select>
