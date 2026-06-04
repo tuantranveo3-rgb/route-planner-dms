@@ -240,7 +240,13 @@ export default function RouteMapPage() {
 
   const saleOptions = useMemo(() => Array.from(new Set(outlets.map((outlet) => outlet.salePhuTrach))).filter(Boolean), [outlets]);
   const plan = useMemo(() => generateMonthlyRoutePlan(month, year, outlets, clusters, DEFAULT_SETTINGS, [], startPoints, salesConfig), [month, year, outlets, startPoints, salesConfig]);
-  const dates = useMemo(() => uniqueDates(plan), [plan]);
+  const dateCandidateRows = plan
+    .filter((visit) => visit.status !== "CS từ xa")
+    .filter((visit) => week === "all" || visit.week === week)
+    .filter((visit) => sale === "all" || visit.outlet.salePhuTrach === sale)
+    .filter((visit) => cluster === "all" || visit.clusterId === cluster)
+    .filter((visit) => frequency === "all" || visit.frequency === frequency);
+  const dates = useMemo(() => uniqueDates(dateCandidateRows), [dateCandidateRows]);
   const rows = plan
     .filter((visit) => visit.status !== "CS từ xa")
     .filter((visit) => date === "all" || visit.plannedDate === date)
@@ -282,8 +288,20 @@ export default function RouteMapPage() {
   const showInternalMap = !useStreetMap || mapStatus.includes("sơ đồ nội bộ");
 
   useEffect(() => {
+    if (date !== "all" && !dates.includes(date)) {
+      setDate("all");
+    }
+  }, [date, dates]);
+
+  useEffect(() => {
     const element = mapElementRef.current;
-    if (!element || !rows.length) return;
+    if (!element) return;
+    if (!rows.length) {
+      leafletLayersRef.current.forEach((layer) => layer.remove());
+      leafletLayersRef.current = [];
+      setMapStatus("Không có điểm phù hợp với bộ lọc hiện tại. Hãy chọn Tất cả ngày hoặc ngày có tuyến của sale này.");
+      return;
+    }
     if (!hasRealVietnamCoordinates(rows, visibleStartPoints)) {
       setMapStatus("Tọa độ hiện tại là X/Y demo, đang dùng sơ đồ nội bộ. Muốn hiện bản đồ thật, nhập toaDoX=kinh độ và toaDoY=vĩ độ tại Việt Nam.");
       return;
