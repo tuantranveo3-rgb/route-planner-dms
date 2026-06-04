@@ -450,7 +450,7 @@ function toDateInputValue(date: Date): string {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-function orderVisitsFromStart(group: RouteVisit[], startPoint?: SaleStartPoint): RouteVisit[] {
+function orderVisitsFromStart(group: RouteVisit[], startPoint?: { toaDoX: number; toaDoY: number }): RouteVisit[] {
   const remaining = [...group];
   const ordered: RouteVisit[] = [];
   let cursor = startPoint ? { toaDoX: startPoint.toaDoX, toaDoY: startPoint.toaDoY } : { toaDoX: group[0].outlet.toaDoX, toaDoY: group[0].outlet.toaDoY };
@@ -469,7 +469,78 @@ function orderVisitsFromStart(group: RouteVisit[], startPoint?: SaleStartPoint):
     cursor = { toaDoX: next.outlet.toaDoX, toaDoY: next.outlet.toaDoY };
   }
 
-  return ordered;
+  return reduceRouteZigzag(ordered, startPoint);
+}
+
+function routeDistance(route: RouteVisit[], startPoint?: { toaDoX: number; toaDoY: number }) {
+  if (!route.length) return 0;
+  let total = startPoint ? distanceBetween(startPoint, route[0].outlet) : 0;
+  for (let index = 1; index < route.length; index += 1) {
+    total += distanceBetween(route[index - 1].outlet, route[index].outlet);
+  }
+  return total;
+}
+
+function reduceRouteZigzag(route: RouteVisit[], startPoint?: { toaDoX: number; toaDoY: number }) {
+  if (route.length < 4) return route;
+  let best = [...route];
+  let improved = true;
+  let guard = 0;
+
+  while (improved && guard < 8) {
+    improved = false;
+    guard += 1;
+    for (let left = 0; left < best.length - 2; left += 1) {
+      for (let right = left + 2; right < best.length; right += 1) {
+        const candidate = [...best.slice(0, left), ...best.slice(left, right + 1).reverse(), ...best.slice(right + 1)];
+        if (routeDistance(candidate, startPoint) + 0.000001 < routeDistance(best, startPoint)) {
+          best = candidate;
+          improved = true;
+        }
+      }
+    }
+  }
+
+  return best;
+}
+
+function getClusterCenter(group: RouteVisit[], cluster?: RouteCluster) {
+  if (cluster) return { toaDoX: cluster.toaDoTamX, toaDoY: cluster.toaDoTamY };
+  return {
+    toaDoX: group.reduce((sum, visit) => sum + visit.outlet.toaDoX, 0) / group.length,
+    toaDoY: group.reduce((sum, visit) => sum + visit.outlet.toaDoY, 0) / group.length,
+  };
+}
+
+function orderSaleDayRoute(group: RouteVisit[], clusterById: Map<string, RouteCluster>, startPoint?: SaleStartPoint): RouteVisit[] {
+  const groupsByCluster = new Map<string, RouteVisit[]>();
+  for (const visit of group) {
+    groupsByCluster.set(visit.clusterId, [...(groupsByCluster.get(visit.clusterId) ?? []), visit]);
+  }
+
+  const remainingClusters = [...groupsByCluster.entries()];
+  const ordered: RouteVisit[] = [];
+  let cursor = startPoint
+    ? { toaDoX: startPoint.toaDoX, toaDoY: startPoint.toaDoY }
+    : getClusterCenter(group, clusterById.get(group[0].clusterId));
+
+  while (remainingClusters.length) {
+    remainingClusters.sort((a, b) => {
+      const centerA = getClusterCenter(a[1], clusterById.get(a[0]));
+      const centerB = getClusterCenter(b[1], clusterById.get(b[0]));
+      return distanceBetween(cursor, centerA) - distanceBetween(cursor, centerB);
+    });
+    const nextCluster = remainingClusters.shift();
+    if (!nextCluster) break;
+    const orderedCluster = orderVisitsFromStart(nextCluster[1], cursor);
+    ordered.push(...orderedCluster);
+    const lastVisit = orderedCluster[orderedCluster.length - 1];
+    if (lastVisit) {
+      cursor = { toaDoX: lastVisit.outlet.toaDoX, toaDoY: lastVisit.outlet.toaDoY };
+    }
+  }
+
+  return reduceRouteZigzag(ordered, startPoint);
 }
 
 function assignDailyOrders(visits: RouteVisit[], clusters: RouteCluster[], saleStartPoints: SaleStartPoint[] = []): RouteVisit[] {
@@ -491,7 +562,7 @@ function assignDailyOrders(visits: RouteVisit[], clusters: RouteCluster[], saleS
       continue;
     }
     const startPoint = dateStartBySale.get(`${group[0].plannedDate}-${group[0].outlet.salePhuTrach}`) ?? defaultStartBySale.get(group[0].outlet.salePhuTrach);
-    const orderedGroup = startPoint ? orderVisitsFromStart(group, startPoint) : optimizeDailyRoute(group.map((visit) => visit.outlet), cluster).map((outlet) => group.find((visit) => visit.outlet.outletId === outlet.outletId)).filter((visit): visit is RouteVisit => Boolean(visit));
+    const orderedGroup = startPoint ? orderSaleDayRoute(group, clusterById, startPoint) : optimizeDailyRoute(group.map((visit) => visit.outlet), cluster).map((outlet) => group.find((visit) => visit.outlet.outletId === outlet.outletId)).filter((visit): visit is RouteVisit => Boolean(visit));
     ordered.push(...orderedGroup.map((visit, index) => ({ ...visit, routeOrder: index + 1 })));
   }
 
