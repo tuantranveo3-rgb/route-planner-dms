@@ -1,28 +1,46 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
 import { FrequencyBadge } from "@/components/FrequencyBadge";
 import { MetricCard } from "@/components/MetricCard";
 import { OverloadWarning } from "@/components/OverloadWarning";
 import { PageHeader } from "@/components/PageHeader";
 import { formatNumber } from "@/lib/format";
+import { loadOutlets } from "@/lib/outlet-storage";
 import { clusters, salesTerritories, seedOutlets } from "@/lib/seed-data";
 import { DEFAULT_SETTINGS, enrichOutlets, generateMonthlyRoutePlan, getOverloadedClusters } from "@/lib/route-logic";
-import type { Frequency } from "@/types/outlet";
+import { loadSalesConfig } from "@/lib/sales-config";
+import type { Frequency, Outlet } from "@/types/outlet";
+import type { SalesTerritory } from "@/types/territory";
 
 const month = new Date().getMonth() + 1;
 const year = new Date().getFullYear();
-const outlets = enrichOutlets(seedOutlets);
-const plan = generateMonthlyRoutePlan(month, year, seedOutlets, clusters, undefined, [], [], salesTerritories);
-const counts = outlets.reduce<Record<Frequency, number>>(
-  (acc, outlet) => {
-    acc[outlet.frequency] += 1;
-    return acc;
-  },
-  { F8: 0, F4: 0, F2: 0, F1: 0, "F0.5": 0, "F0.3": 0 },
-);
-const monthlyVisits = Number(outlets.reduce((sum, outlet) => sum + outlet.monthlyVisits, 0).toFixed(1));
-const averageDailyVisits = Number((monthlyVisits / DEFAULT_SETTINGS.workingDaysPerMonth).toFixed(1));
-const overloaded = getOverloadedClusters(plan, clusters);
-const saleWarningItems = (() => {
-  const territoryBySale = new Map(salesTerritories.map((territory) => [territory.salePhuTrach, territory]));
+
+function buildActiveTerritories(outlets: Outlet[], savedConfig: SalesTerritory[]): SalesTerritory[] {
+  const saleOptions = Array.from(new Set(outlets.map((outlet) => outlet.salePhuTrach))).filter(Boolean);
+  return saleOptions.map((saleName) => {
+    const existing = savedConfig.find((item) => item.salePhuTrach === saleName);
+    const ownerOutlets = outlets.filter((outlet) => outlet.salePhuTrach === saleName);
+    const khuVucPhuTrach = Array.from(new Set(ownerOutlets.map((outlet) => outlet.quanHuyen))).filter(Boolean);
+    const cumNhoPhuTrach = Array.from(new Set(ownerOutlets.map((outlet) => outlet.cumNho))).filter(Boolean);
+    return {
+      ...(existing ?? {
+        salePhuTrach: saleName,
+        saleBackup: "",
+        minVisitsPerDay: DEFAULT_SETTINGS.minVisitsPerSaleDay,
+        maxVisitsPerDay: DEFAULT_SETTINGS.maxVisitsPerSaleDay,
+        ngayDiUuTien: [],
+        lichTheoNgay: [],
+        ghiChu: "",
+      }),
+      khuVucPhuTrach: existing?.khuVucPhuTrach.length ? existing.khuVucPhuTrach : khuVucPhuTrach,
+      cumNhoPhuTrach: existing?.cumNhoPhuTrach.length ? existing.cumNhoPhuTrach : cumNhoPhuTrach,
+    };
+  });
+}
+
+function getSaleWarnings(plan: ReturnType<typeof generateMonthlyRoutePlan>, territories: SalesTerritory[]) {
+  const territoryBySale = new Map(territories.map((territory) => [territory.salePhuTrach, territory]));
   const grouped = new Map<string, { sale: string; week: string; dayName: string; visits: number; min: number; max: number }>();
 
   for (const visit of plan.filter((item) => item.status !== "CS từ xa")) {
@@ -43,9 +61,36 @@ const saleWarningItems = (() => {
   }
 
   return [...grouped.values()].filter((item) => item.visits < item.min || item.visits > item.max);
-})();
+}
 
 export default function DashboardPage() {
+  const [sourceOutlets, setSourceOutlets] = useState<Outlet[]>(seedOutlets);
+  const [salesConfig, setSalesConfig] = useState<SalesTerritory[]>(salesTerritories);
+
+  useEffect(() => {
+    setSourceOutlets(loadOutlets());
+    setSalesConfig(loadSalesConfig());
+  }, []);
+
+  const activeTerritories = useMemo(() => buildActiveTerritories(sourceOutlets, salesConfig), [sourceOutlets, salesConfig]);
+  const outlets = useMemo(() => enrichOutlets(sourceOutlets), [sourceOutlets]);
+  const plan = useMemo(() => generateMonthlyRoutePlan(month, year, sourceOutlets, clusters, undefined, [], [], activeTerritories), [activeTerritories, sourceOutlets]);
+  const counts = useMemo(
+    () =>
+      outlets.reduce<Record<Frequency, number>>(
+        (acc, outlet) => {
+          acc[outlet.frequency] += 1;
+          return acc;
+        },
+        { F8: 0, F4: 0, F2: 0, F1: 0, "F0.5": 0, "F0.3": 0 },
+      ),
+    [outlets],
+  );
+  const monthlyVisits = Number(outlets.reduce((sum, outlet) => sum + outlet.monthlyVisits, 0).toFixed(1));
+  const averageDailyVisits = Number((monthlyVisits / DEFAULT_SETTINGS.workingDaysPerMonth).toFixed(1));
+  const overloaded = getOverloadedClusters(plan, clusters);
+  const saleWarningItems = useMemo(() => getSaleWarnings(plan, activeTerritories), [activeTerritories, plan]);
+
   return (
     <div>
       <PageHeader
@@ -54,7 +99,7 @@ export default function DashboardPage() {
       />
 
       <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-        <MetricCard label="Tổng điểm bán" value={outlets.length} hint="Dữ liệu seed TP.HCM" />
+        <MetricCard label="Tổng điểm bán" value={outlets.length} hint="Dữ liệu import hiện tại" />
         <MetricCard label="Tổng lượt ghé/tháng" value={formatNumber(monthlyVisits)} hint="F8=8, F4=4, F2=2, F1=1, F0.5/F0.3 linh hoạt" />
         <MetricCard label="Lượt ghé/ngày bình quân" value={formatNumber(averageDailyVisits)} hint={`${DEFAULT_SETTINGS.workingDaysPerMonth} ngày làm việc/tháng`} />
         <MetricCard label="Cảnh báo sale/ngày" value={saleWarningItems.length} hint="Theo min/max riêng từng sale" />
@@ -69,12 +114,12 @@ export default function DashboardPage() {
           </a>
         </div>
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          {salesTerritories.map((territory) => (
+          {activeTerritories.map((territory) => (
             <div key={territory.salePhuTrach} className="rounded-md border border-line p-3">
               <div className="font-bold">{territory.salePhuTrach}</div>
               <div className="mt-1 text-sm text-muted">{territory.khuVucPhuTrach.join(", ")}</div>
               <div className="mt-2 text-sm">Cụm: {territory.cumNhoPhuTrach.join(", ")}</div>
-              <div className="mt-1 text-xs text-muted">Backup: {territory.saleBackup}</div>
+              <div className="mt-1 text-xs text-muted">Backup: {territory.saleBackup || "Chưa set"}</div>
             </div>
           ))}
         </div>
