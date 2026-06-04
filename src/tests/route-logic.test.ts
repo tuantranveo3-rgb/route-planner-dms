@@ -134,6 +134,38 @@ describe("route logic", () => {
     expect(new Set(weekOneVisits.map((visit) => visit.dayName)).size).toBeGreaterThan(1);
   });
 
+  it("does not schedule visits on sale unavailable days", () => {
+    const territory = {
+      salePhuTrach: "Sale Off",
+      khuVucPhuTrach: ["Quận 1"],
+      cumNhoPhuTrach: ["Q1-A"],
+      saleBackup: "",
+      ngayDiUuTien: ["Thứ 2"],
+      lichTheoNgay: [{ dayName: "Thứ 2", clusterIds: ["Q1-A"] }],
+      minVisitsPerDay: 1,
+      maxVisitsPerDay: 15,
+      ghiChu: "",
+    };
+    const outlet: Outlet = {
+      ...strongOutlet,
+      outletId: "OFF-001",
+      salePhuTrach: "Sale Off",
+      ghiNhanF: "F1",
+    };
+    const plan = generateMonthlyRoutePlan(6, 2026, [outlet], clusters, undefined, [], [], [territory], [
+      {
+        id: "Sale Off-2026-06-01",
+        salePhuTrach: "Sale Off",
+        date: "2026-06-01",
+        reason: "Nghỉ phép",
+      },
+    ]);
+
+    expect(plan).toHaveLength(1);
+    expect(plan[0].plannedDate).not.toBe("2026-06-01");
+    expect(plan[0].warning).toContain("Tự dời");
+  });
+
   it("builds carryover items from missed execution records and injects them into next month", () => {
     const plan = generateMonthlyRoutePlan(5, 2026, seedOutlets, clusters);
     const visit = plan.find((item) => item.frequency === "F4");

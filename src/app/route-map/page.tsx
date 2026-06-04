@@ -8,10 +8,10 @@ import { loadOutlets } from "@/lib/outlet-storage";
 import { clusters, salesTerritories, seedOutlets } from "@/lib/seed-data";
 import { DEFAULT_SETTINGS, generateMonthlyRoutePlan } from "@/lib/route-logic";
 import { loadSalesConfig } from "@/lib/sales-config";
+import { loadSaleUnavailableDays } from "@/lib/sale-unavailable";
 import { loadStartPoints, saveStartPoints } from "@/lib/start-points";
 import type { Frequency, Outlet } from "@/types/outlet";
-import type { RouteVisit, WeekKey } from "@/types/route";
-import type { SaleStartPoint } from "@/types/route";
+import type { RouteVisit, SaleStartPoint, SaleUnavailableDay, WeekKey } from "@/types/route";
 import type { SalesTerritory } from "@/types/territory";
 
 type Point = {
@@ -215,6 +215,7 @@ export default function RouteMapPage() {
   const [startScope, setStartScope] = useState<"default" | "date">("default");
   const [startDate, setStartDate] = useState("");
   const [salesConfig, setSalesConfig] = useState<SalesTerritory[]>(salesTerritories);
+  const [unavailableDays, setUnavailableDays] = useState<SaleUnavailableDay[]>([]);
   const [mapStatus, setMapStatus] = useState("Đang tải bản đồ OpenStreetMap...");
 
   useEffect(() => {
@@ -223,6 +224,7 @@ export default function RouteMapPage() {
     setEditingSale(Array.from(new Set(storedOutlets.map((outlet) => outlet.salePhuTrach)))[0] ?? "");
     setStartPoints(loadStartPoints());
     setSalesConfig(loadSalesConfig());
+    setUnavailableDays(loadSaleUnavailableDays());
   }, []);
 
   useEffect(() => {
@@ -239,7 +241,7 @@ export default function RouteMapPage() {
   }, [editingSale, selectedStartPoint, startDate, startPoints, startScope]);
 
   const saleOptions = useMemo(() => Array.from(new Set(outlets.map((outlet) => outlet.salePhuTrach))).filter(Boolean), [outlets]);
-  const plan = useMemo(() => generateMonthlyRoutePlan(month, year, outlets, clusters, DEFAULT_SETTINGS, [], startPoints, salesConfig), [month, year, outlets, startPoints, salesConfig]);
+  const plan = useMemo(() => generateMonthlyRoutePlan(month, year, outlets, clusters, DEFAULT_SETTINGS, [], startPoints, salesConfig, unavailableDays), [month, year, outlets, startPoints, salesConfig, unavailableDays]);
   const dateCandidateRows = plan
     .filter((visit) => visit.status !== "CS từ xa")
     .filter((visit) => week === "all" || visit.week === week)

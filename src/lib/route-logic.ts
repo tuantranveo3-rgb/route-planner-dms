@@ -1,6 +1,6 @@
 import type { RouteCluster } from "@/types/cluster";
 import type { EnrichedOutlet, Frequency, Outlet, OutletScore } from "@/types/outlet";
-import type { CarryoverVisit, PlannerSettings, RouteVisit, SaleStartPoint, WeekKey } from "@/types/route";
+import type { CarryoverVisit, PlannerSettings, RouteVisit, SaleStartPoint, SaleUnavailableDay, WeekKey } from "@/types/route";
 import type { SalesTerritory } from "@/types/territory";
 import { formatNumber } from "@/lib/format";
 
@@ -170,6 +170,7 @@ export function generateMonthlyRoutePlan(
   carryovers: CarryoverVisit[] = [],
   saleStartPoints: SaleStartPoint[] = [],
   salesTerritories: SalesTerritory[] = [],
+  unavailableDays: SaleUnavailableDay[] = [],
 ): RouteVisit[] {
   const enriched = enrichOutlets(outlets, settings);
   const clusterById = new Map(clusters.map((cluster) => [cluster.maCum, cluster]));
@@ -189,6 +190,17 @@ export function generateMonthlyRoutePlan(
     ),
   );
   const territoryBySale = new Map(salesTerritories.map((territory) => [territory.salePhuTrach, territory]));
+  const unavailableBySaleDate = new Map(unavailableDays.map((item) => [`${item.salePhuTrach}-${item.date}`, item]));
+
+  function getUnavailableReason(saleName: string, plannedDate: string) {
+    const unavailable = unavailableBySaleDate.get(`${saleName}-${plannedDate}`);
+    if (!unavailable) return "";
+    return `${unavailable.reason}${unavailable.note ? `: ${unavailable.note}` : ""}`;
+  }
+
+  function isSaleUnavailable(saleName: string, plannedDate: string) {
+    return unavailableBySaleDate.has(`${saleName}-${plannedDate}`);
+  }
 
   function getSaleMax(saleName: string) {
     return territoryBySale.get(saleName)?.maxVisitsPerDay ?? settings.maxVisitsPerSaleDay;
@@ -210,6 +222,7 @@ export function generateMonthlyRoutePlan(
     for (const dayName of candidateDays(preferredDayName)) {
       const clusterKey = `${week}-${cluster.maCum}-${dayName}`;
       const plannedDate = getPlannedDate(year, month, week, dayName);
+      if (isSaleUnavailable(saleName, plannedDate)) continue;
       const saleDayKey = `${plannedDate}-${saleName}`;
       const clusterUsed = capacityCounter.get(clusterKey) ?? 0;
       const saleUsed = saleDayCounter.get(saleDayKey) ?? 0;
@@ -232,6 +245,7 @@ export function generateMonthlyRoutePlan(
     const clusterUsed = capacityCounter.get(clusterKey) ?? 0;
     const saleUsed = saleDayCounter.get(saleDayKey) ?? 0;
     const reasons = [
+      isSaleUnavailable(saleName, plannedDate) ? `${saleName} không đi tuyến ngày ${plannedDate} (${getUnavailableReason(saleName, plannedDate)})` : "",
       clusterUsed >= capacity ? `cụm ${cluster.maCum} đã đủ capacity ${capacity}` : "",
       saleUsed >= saleMax ? `${saleName} đã đủ max ${saleMax} điểm/ngày` : "",
     ].filter(Boolean);
@@ -290,7 +304,7 @@ export function generateMonthlyRoutePlan(
         for (const source of smallGroups) {
           if (!source.items.every((item) => item.plannedDate === source.plannedDate && item.dayName === source.dayName)) continue;
           const target = groups
-            .filter((group) => group !== source && group.items.length + source.items.length <= max)
+            .filter((group) => group !== source && group.items.length + source.items.length <= max && !isSaleUnavailable(saleName, group.plannedDate))
             .sort((a, b) => {
               const aReady = a.items.length >= min ? 0 : 1;
               const bReady = b.items.length >= min ? 0 : 1;

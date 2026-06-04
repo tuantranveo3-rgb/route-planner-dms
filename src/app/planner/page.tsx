@@ -20,6 +20,7 @@ import {
   upsertExecutionRecord,
 } from "@/lib/route-execution";
 import { generateMonthlyRoutePlan, getOverloadedClusters } from "@/lib/route-logic";
+import { loadSaleUnavailableDays, saveSaleUnavailableDays, UNAVAILABLE_STORAGE_KEY } from "@/lib/sale-unavailable";
 import { clusters, saleStartPoints, seedOutlets } from "@/lib/seed-data";
 import { getSaleLimits, loadSalesConfig } from "@/lib/sales-config";
 import { loadPlannerSettings } from "@/lib/settings-storage";
@@ -32,7 +33,6 @@ type QuickRouteFilter = "all" | "carryover" | "missed" | "missed-priority";
 type PlannerViewMode = "daily" | "table";
 type UnavailableReason = SaleUnavailableDay["reason"];
 
-const UNAVAILABLE_STORAGE_KEY = "route-planner-dms-sale-unavailable-days-v1";
 const unavailableReasons: UnavailableReason[] = ["Ở văn phòng", "Ở kho", "Chỉ đạo khác", "Nghỉ phép"];
 
 function getPreviousPeriod(month: number, year: number) {
@@ -144,8 +144,7 @@ export default function PlannerPage() {
   useEffect(() => {
     const raw = window.localStorage.getItem(EXECUTION_STORAGE_KEY);
     if (raw) setRecords(JSON.parse(raw) as RouteExecutionRecord[]);
-    const unavailableRaw = window.localStorage.getItem(UNAVAILABLE_STORAGE_KEY);
-    if (unavailableRaw) setUnavailableDays(JSON.parse(unavailableRaw) as SaleUnavailableDay[]);
+    setUnavailableDays(loadSaleUnavailableDays());
     setSettings(loadPlannerSettings());
     setSalesConfig(loadSalesConfig());
     const storedOutlets = loadOutlets();
@@ -158,14 +157,14 @@ export default function PlannerPage() {
   }, [records]);
 
   useEffect(() => {
-    window.localStorage.setItem(UNAVAILABLE_STORAGE_KEY, JSON.stringify(unavailableDays));
+    saveSaleUnavailableDays(unavailableDays);
   }, [unavailableDays]);
 
   const previousPeriod = getPreviousPeriod(month, year);
   const saleOptions = useMemo(() => Array.from(new Set(outlets.map((outlet) => outlet.salePhuTrach))).filter(Boolean), [outlets]);
   const previousBasePlan = useMemo(
-    () => generateMonthlyRoutePlan(previousPeriod.month, previousPeriod.year, outlets, clusters, settings, [], saleStartPoints, salesConfig),
-    [previousPeriod.month, previousPeriod.year, outlets, settings, salesConfig],
+    () => generateMonthlyRoutePlan(previousPeriod.month, previousPeriod.year, outlets, clusters, settings, [], saleStartPoints, salesConfig, unavailableDays),
+    [previousPeriod.month, previousPeriod.year, outlets, settings, salesConfig, unavailableDays],
   );
   const previousRecords = useMemo(
     () => recordsForPeriod(records, previousPeriod.month, previousPeriod.year),
@@ -177,8 +176,8 @@ export default function PlannerPage() {
     const byOutlet = new Map([...previousCarryovers, ...historyCarryovers].map((item) => [item.outletId, item]));
     return [...byOutlet.values()];
   }, [previousBasePlan, previousRecords, records, month, year, settings, outlets]);
-  const plan = useMemo(() => generateMonthlyRoutePlan(month, year, outlets, clusters, settings, carryovers, saleStartPoints, salesConfig), [month, year, outlets, settings, carryovers, salesConfig]);
-  const scheduledPlan = useMemo(() => applyUnavailableDays(plan, unavailableDays, month, year), [plan, unavailableDays, month, year]);
+  const plan = useMemo(() => generateMonthlyRoutePlan(month, year, outlets, clusters, settings, carryovers, saleStartPoints, salesConfig, unavailableDays), [month, year, outlets, settings, carryovers, salesConfig, unavailableDays]);
+  const scheduledPlan = plan;
   const currentRecords = useMemo(() => recordsForPeriod(records, month, year), [records, month, year]);
   const planWithExecution = useMemo(
     () => scheduledPlan.map((visit) => ({ ...visit, status: getEffectiveStatus(visit, currentRecords) })),
