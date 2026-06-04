@@ -1,8 +1,10 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { BarChart3, BookOpen, CalendarDays, Database, FileBarChart, Map, MapPinned, Settings, Upload, Users, Workflow } from "lucide-react";
+import { demoAccounts, loadCurrentAccount, saveCurrentAccount, type AppRole } from "@/lib/auth";
 
 const items = [
   { href: "/dashboard", label: "Dashboard", icon: BarChart3 },
@@ -19,6 +21,13 @@ const items = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const [role, setRole] = useState<AppRole>("boss");
+
+  useEffect(() => {
+    setRole(loadCurrentAccount().id);
+  }, []);
+
+  const account = demoAccounts.find((item) => item.id === role) ?? demoAccounts[0];
 
   return (
     <aside className="border-line bg-white p-4 shadow-soft lg:sticky lg:top-0 lg:h-screen lg:w-72 lg:border-r">
@@ -49,6 +58,28 @@ export function Sidebar() {
           );
         })}
       </nav>
+      <div className="mt-5 rounded-lg border border-line bg-slate-50 p-3">
+        <label className="mb-1 block text-xs font-bold uppercase text-muted">Account demo</label>
+        <select
+          className="h-9 w-full rounded-md border border-line bg-white px-2 text-sm"
+          value={role}
+          onChange={(event) => {
+            const next = event.target.value as AppRole;
+            setRole(next);
+            saveCurrentAccount(next);
+            window.dispatchEvent(new Event("route-planner-account-change"));
+          }}
+        >
+          {demoAccounts.map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.name}
+            </option>
+          ))}
+        </select>
+        <div className="mt-2 text-xs leading-5 text-muted">
+          <span className="font-bold text-ink">{account.roleLabel}</span>: {account.description}
+        </div>
+      </div>
     </aside>
   );
 }

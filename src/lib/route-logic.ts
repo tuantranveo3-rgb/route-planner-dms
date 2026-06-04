@@ -62,7 +62,7 @@ export function calculateDistanceScore(khoangCachTamCumKm: number): number {
   if (khoangCachTamCumKm <= 5) return 80;
   if (khoangCachTamCumKm <= 10) return 60;
   if (khoangCachTamCumKm <= 20) return 40;
-  return 20;
+  return 0;
 }
 
 export function calculateRiskScore(ruiRoMatKhach: number): number {

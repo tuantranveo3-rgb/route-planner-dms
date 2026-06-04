@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { FrequencyBadge } from "@/components/FrequencyBadge";
 import { MetricCard } from "@/components/MetricCard";
 import { PageHeader } from "@/components/PageHeader";
+import { loadClusters } from "@/lib/cluster-storage";
 import { loadOutlets } from "@/lib/outlet-storage";
 import { clusters, salesTerritories, seedOutlets } from "@/lib/seed-data";
 import { DEFAULT_SETTINGS, generateMonthlyRoutePlan, getPlannedDate, weeks } from "@/lib/route-logic";
@@ -11,6 +12,7 @@ import { loadSalesConfig } from "@/lib/sales-config";
 import { loadSaleUnavailableDays } from "@/lib/sale-unavailable";
 import { loadStartPoints, saveStartPoints } from "@/lib/start-points";
 import type { Frequency, Outlet } from "@/types/outlet";
+import type { RouteCluster } from "@/types/cluster";
 import type { RouteVisit, SaleStartPoint, SaleUnavailableDay, WeekKey } from "@/types/route";
 import type { SalesTerritory } from "@/types/territory";
 
@@ -207,6 +209,7 @@ export default function RouteMapPage() {
   const [cluster, setCluster] = useState("all");
   const [frequency, setFrequency] = useState<"all" | Frequency>("all");
   const [outlets, setOutlets] = useState<Outlet[]>(seedOutlets);
+  const [routeClusters, setRouteClusters] = useState<RouteCluster[]>(clusters);
   const [startPoints, setStartPoints] = useState<SaleStartPoint[]>([]);
   const [editingSale, setEditingSale] = useState("");
   const selectedStartPoint = startPoints.find((point) => point.salePhuTrach === editingSale && !point.date);
@@ -226,6 +229,7 @@ export default function RouteMapPage() {
     const currentSales = new Set(storedOutlets.map((outlet) => outlet.salePhuTrach).filter(Boolean));
     const cleanedStartPoints = loadStartPoints().filter((point) => currentSales.has(point.salePhuTrach));
     setOutlets(storedOutlets);
+    setRouteClusters(loadClusters());
     setEditingSale(Array.from(currentSales)[0] ?? "");
     setStartPoints(cleanedStartPoints);
     saveStartPoints(cleanedStartPoints);
@@ -254,7 +258,7 @@ export default function RouteMapPage() {
     () => (outletsUseStreetCoordinates ? currentStartPoints.filter(isValidVietnamStartPoint) : currentStartPoints),
     [currentStartPoints, outletsUseStreetCoordinates],
   );
-  const plan = useMemo(() => generateMonthlyRoutePlan(month, year, outlets, clusters, DEFAULT_SETTINGS, [], startPointsForPlanning, salesConfig, unavailableDays), [month, year, outlets, startPointsForPlanning, salesConfig, unavailableDays]);
+  const plan = useMemo(() => generateMonthlyRoutePlan(month, year, outlets, routeClusters, DEFAULT_SETTINGS, [], startPointsForPlanning, salesConfig, unavailableDays), [month, year, outlets, routeClusters, startPointsForPlanning, salesConfig, unavailableDays]);
   const dateCandidateRows = plan
     .filter((visit) => visit.status !== "CS từ xa")
     .filter((visit) => week === "all" || visit.week === week)
@@ -559,7 +563,7 @@ export default function RouteMapPage() {
         </select>
         <select className="h-10 rounded-md border border-line px-3 text-sm" value={cluster} onChange={(event) => setCluster(event.target.value)}>
           <option value="all">Tất cả cụm</option>
-          {clusters.map((item) => (
+          {routeClusters.map((item) => (
             <option key={item.maCum} value={item.maCum}>
               {item.maCum}
             </option>

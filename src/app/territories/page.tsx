@@ -4,11 +4,13 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { OverloadWarning } from "@/components/OverloadWarning";
 import { PageHeader } from "@/components/PageHeader";
+import { loadClusters } from "@/lib/cluster-storage";
 import { loadOutlets } from "@/lib/outlet-storage";
 import { clusters, salesTerritories, seedOutlets } from "@/lib/seed-data";
 import { loadSalesConfig, saveSalesConfig } from "@/lib/sales-config";
 import { findUnassignedClusters, summarizeTerritories } from "@/lib/territory-logic";
 import type { SalesTerritory } from "@/types/territory";
+import type { RouteCluster } from "@/types/cluster";
 
 const WEEK_DAYS = ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7"];
 const ALL_SALES = "Tất cả sale";
@@ -18,8 +20,8 @@ function toggleValue(list: string[], value: string) {
   return list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
 }
 
-function clusterLabel(clusterId: string) {
-  const cluster = clusters.find((item) => item.maCum === clusterId);
+function clusterLabel(clusterId: string, routeClusters: RouteCluster[]) {
+  const cluster = routeClusters.find((item) => item.maCum === clusterId);
   return cluster ? `${cluster.maCum} - ${cluster.tenCum}` : clusterId;
 }
 
@@ -58,24 +60,26 @@ function TerritoriesContent() {
   const searchParams = useSearchParams();
   const [config, setConfig] = useState<SalesTerritory[]>(() => loadSalesConfig());
   const [outlets, setOutlets] = useState(seedOutlets);
+  const [routeClusters, setRouteClusters] = useState<RouteCluster[]>(clusters);
   const saleFilter = searchParams.get("sale") || ALL_SALES;
   const districtFilter = searchParams.get("district") || ALL_DISTRICTS;
 
   useEffect(() => {
     setOutlets(loadOutlets());
     setConfig(loadSalesConfig());
+    setRouteClusters(loadClusters());
   }, []);
 
   useEffect(() => {
     if (config.length) saveSalesConfig(config);
   }, [config]);
 
-  const rows = useMemo(() => summarizeTerritories(config, outlets, clusters), [config, outlets]);
-  const unassignedClusters = useMemo(() => findUnassignedClusters(config, clusters), [config]);
+  const rows = useMemo(() => summarizeTerritories(config, outlets, routeClusters), [config, outlets, routeClusters]);
+  const unassignedClusters = useMemo(() => findUnassignedClusters(config, routeClusters), [config, routeClusters]);
   const activeSaleNames = useMemo(() => new Set(outlets.map((outlet) => outlet.salePhuTrach).filter(Boolean)), [outlets]);
   const activeConfig = useMemo(() => config.filter((item) => activeSaleNames.has(item.salePhuTrach)), [activeSaleNames, config]);
   const saleOptions = useMemo(() => activeConfig.map((item) => item.salePhuTrach), [activeConfig]);
-  const districtOptions = useMemo(() => Array.from(new Set(clusters.map((cluster) => cluster.quanHuyen))).sort(), []);
+  const districtOptions = useMemo(() => Array.from(new Set(routeClusters.map((cluster) => cluster.quanHuyen))).sort(), [routeClusters]);
 
   const visibleConfig = useMemo(
     () =>
@@ -93,7 +97,7 @@ function TerritoriesContent() {
 
   function updateDistrict(territory: SalesTerritory, district: string) {
     const nextDistricts = toggleValue(territory.khuVucPhuTrach, district);
-    const allowedClusterIds = clusters.filter((cluster) => nextDistricts.includes(cluster.quanHuyen)).map((cluster) => cluster.maCum);
+    const allowedClusterIds = routeClusters.filter((cluster) => nextDistricts.includes(cluster.quanHuyen)).map((cluster) => cluster.maCum);
     const nextClusterIds = territory.cumNhoPhuTrach.filter((clusterId) => allowedClusterIds.includes(clusterId));
     const nextSchedule = sanitizeSchedule(territory.lichTheoNgay, nextClusterIds);
     updateSale(territory.salePhuTrach, {
@@ -199,8 +203,8 @@ function TerritoriesContent() {
       <div className="mt-4 grid gap-4">
         {visibleConfig.map((territory) => {
           const row = rows.find((item) => item.salePhuTrach === territory.salePhuTrach);
-          const assignedClusters = clusters.filter((cluster) => territory.cumNhoPhuTrach.includes(cluster.maCum));
-          const availableClusters = clusters.filter((cluster) => territory.khuVucPhuTrach.includes(cluster.quanHuyen));
+          const assignedClusters = routeClusters.filter((cluster) => territory.cumNhoPhuTrach.includes(cluster.maCum));
+          const availableClusters = routeClusters.filter((cluster) => territory.khuVucPhuTrach.includes(cluster.quanHuyen));
 
           return (
             <section key={territory.salePhuTrach} className="rounded-lg border border-line bg-white p-4 shadow-sm">
@@ -323,7 +327,7 @@ function TerritoriesContent() {
                                 <label
                                   key={`${dayName}-${cluster.maCum}`}
                                   className={`flex cursor-pointer items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-bold ${checkedClass(active, "dark")}`}
-                                  title={clusterLabel(cluster.maCum)}
+                                  title={clusterLabel(cluster.maCum, routeClusters)}
                                 >
                                   <input
                                     checked={active}

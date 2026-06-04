@@ -6,6 +6,8 @@ import { FrequencyBadge } from "@/components/FrequencyBadge";
 import { MetricCard } from "@/components/MetricCard";
 import { OverloadWarning } from "@/components/OverloadWarning";
 import { PageHeader } from "@/components/PageHeader";
+import { canEdit, loadCurrentAccount, type AppRole } from "@/lib/auth";
+import { loadClusters } from "@/lib/cluster-storage";
 import { downloadCsv, plannerToCsv } from "@/lib/csv";
 import { loadOutlets } from "@/lib/outlet-storage";
 import {
@@ -27,6 +29,7 @@ import { loadPlannerSettings } from "@/lib/settings-storage";
 import type { Frequency, Outlet } from "@/types/outlet";
 import type { PlannerSettings, RouteExecutionRecord, RouteVisit, SaleUnavailableDay, VisitStatus, WeekKey } from "@/types/route";
 import { DEFAULT_SETTINGS } from "@/lib/route-logic";
+import type { RouteCluster } from "@/types/cluster";
 import type { SalesTerritory } from "@/types/territory";
 
 type QuickRouteFilter = "all" | "carryover" | "missed" | "missed-priority";
@@ -134,12 +137,15 @@ export default function PlannerPage() {
   const [records, setRecords] = useState<RouteExecutionRecord[]>([]);
   const [settings, setSettings] = useState<PlannerSettings>(DEFAULT_SETTINGS);
   const [salesConfig, setSalesConfig] = useState<SalesTerritory[]>([]);
+  const [routeClusters, setRouteClusters] = useState<RouteCluster[]>(clusters);
   const [outlets, setOutlets] = useState<Outlet[]>(seedOutlets);
   const [unavailableDays, setUnavailableDays] = useState<SaleUnavailableDay[]>([]);
   const [unavailableSale, setUnavailableSale] = useState("");
   const [unavailableDate, setUnavailableDate] = useState("");
   const [unavailableReason, setUnavailableReason] = useState<UnavailableReason>("Ở văn phòng");
   const [unavailableNote, setUnavailableNote] = useState("");
+  const [role, setRole] = useState<AppRole>("boss");
+  const editable = canEdit(role);
 
   useEffect(() => {
     const raw = window.localStorage.getItem(EXECUTION_STORAGE_KEY);
@@ -147,9 +153,14 @@ export default function PlannerPage() {
     setUnavailableDays(loadSaleUnavailableDays());
     setSettings(loadPlannerSettings());
     setSalesConfig(loadSalesConfig());
+    setRouteClusters(loadClusters());
     const storedOutlets = loadOutlets();
     setOutlets(storedOutlets);
     setUnavailableSale(Array.from(new Set(storedOutlets.map((outlet) => outlet.salePhuTrach)))[0] ?? "");
+    setRole(loadCurrentAccount().id);
+    const listener = () => setRole(loadCurrentAccount().id);
+    window.addEventListener("route-planner-account-change", listener);
+    return () => window.removeEventListener("route-planner-account-change", listener);
   }, []);
 
   useEffect(() => {
@@ -163,8 +174,8 @@ export default function PlannerPage() {
   const previousPeriod = getPreviousPeriod(month, year);
   const saleOptions = useMemo(() => Array.from(new Set(outlets.map((outlet) => outlet.salePhuTrach))).filter(Boolean), [outlets]);
   const previousBasePlan = useMemo(
-    () => generateMonthlyRoutePlan(previousPeriod.month, previousPeriod.year, outlets, clusters, settings, [], saleStartPoints, salesConfig, unavailableDays),
-    [previousPeriod.month, previousPeriod.year, outlets, settings, salesConfig, unavailableDays],
+    () => generateMonthlyRoutePlan(previousPeriod.month, previousPeriod.year, outlets, routeClusters, settings, [], saleStartPoints, salesConfig, unavailableDays),
+    [previousPeriod.month, previousPeriod.year, outlets, routeClusters, settings, salesConfig, unavailableDays],
   );
   const previousRecords = useMemo(
     () => recordsForPeriod(records, previousPeriod.month, previousPeriod.year),
@@ -176,7 +187,7 @@ export default function PlannerPage() {
     const byOutlet = new Map([...previousCarryovers, ...historyCarryovers].map((item) => [item.outletId, item]));
     return [...byOutlet.values()];
   }, [previousBasePlan, previousRecords, records, month, year, settings, outlets]);
-  const plan = useMemo(() => generateMonthlyRoutePlan(month, year, outlets, clusters, settings, carryovers, saleStartPoints, salesConfig, unavailableDays), [month, year, outlets, settings, carryovers, salesConfig, unavailableDays]);
+  const plan = useMemo(() => generateMonthlyRoutePlan(month, year, outlets, routeClusters, settings, carryovers, saleStartPoints, salesConfig, unavailableDays), [month, year, outlets, routeClusters, settings, carryovers, salesConfig, unavailableDays]);
   const scheduledPlan = plan;
   const currentRecords = useMemo(() => recordsForPeriod(records, month, year), [records, month, year]);
   const planWithExecution = useMemo(
@@ -184,7 +195,7 @@ export default function PlannerPage() {
     [scheduledPlan, currentRecords],
   );
   const summary = summarizeExecution(scheduledPlan, currentRecords);
-  const overloaded = getOverloadedClusters(planWithExecution, clusters);
+  const overloaded = getOverloadedClusters(planWithExecution, routeClusters);
   const saleDayWarnings = getSaleDayWarnings(planWithExecution, settings);
   const rows = planWithExecution.filter((visit) => {
     return (
@@ -202,6 +213,7 @@ export default function PlannerPage() {
     .sort((a, b) => a.date.localeCompare(b.date) || a.salePhuTrach.localeCompare(b.salePhuTrach));
 
   function updateExecution(visit: RouteVisit, patch: Parameters<typeof upsertExecutionRecord>[2]) {
+    if (!editable) return;
     setRecords((current) => upsertExecutionRecord(current, visit, patch));
   }
 
@@ -210,6 +222,7 @@ export default function PlannerPage() {
   }
 
   function addUnavailableDay() {
+    if (!editable) return;
     if (!unavailableSale || !unavailableDate) return;
     const next: SaleUnavailableDay = {
       id: `${unavailableSale}-${unavailableDate}-${Date.now()}`,
@@ -223,10 +236,12 @@ export default function PlannerPage() {
   }
 
   function removeUnavailableDay(id: string) {
+    if (!editable) return;
     setUnavailableDays((current) => current.filter((item) => item.id !== id));
   }
 
   function resetDemoExecution() {
+    if (!editable) return;
     const ok = window.confirm("Xóa toàn bộ dữ liệu thực hiện demo đang lưu trên trình duyệt?");
     if (!ok) return;
     setRecords([]);
@@ -340,7 +355,8 @@ export default function PlannerPage() {
         return (
           <div className="grid min-w-56 gap-2">
             <select
-              className="h-9 rounded-md border border-line px-2 text-sm"
+              className="h-9 rounded-md border border-line px-2 text-sm disabled:bg-slate-50"
+              disabled={!editable}
               value={row.status}
               onChange={(event) => updateExecution(row, { actualStatus: event.target.value as VisitStatus })}
             >
@@ -351,7 +367,8 @@ export default function PlannerPage() {
               ))}
             </select>
             <input
-              className="h-9 rounded-md border border-line px-2 text-sm"
+              className="h-9 rounded-md border border-line px-2 text-sm disabled:bg-slate-50"
+              disabled={!editable}
               type="date"
               value={record?.actualVisitDate ?? ""}
               onChange={(event) => updateExecution(row, { actualVisitDate: event.target.value })}
@@ -368,7 +385,8 @@ export default function PlannerPage() {
         return (
           <div className="grid min-w-64 gap-2">
             <input
-              className="h-9 rounded-md border border-line px-2 text-sm"
+              className="h-9 rounded-md border border-line px-2 text-sm disabled:bg-slate-50"
+              disabled={!editable}
               type="number"
               min={0}
               placeholder="Doanh số phát sinh"
@@ -376,7 +394,8 @@ export default function PlannerPage() {
               onChange={(event) => updateExecution(row, { actualRevenue: Number(event.target.value) })}
             />
             <input
-              className="h-9 rounded-md border border-line px-2 text-sm"
+              className="h-9 rounded-md border border-line px-2 text-sm disabled:bg-slate-50"
+              disabled={!editable}
               placeholder="Ghi chú lý do chưa đi/kết quả"
               value={record?.note ?? ""}
               onChange={(event) => updateExecution(row, { note: event.target.value })}
@@ -394,6 +413,7 @@ export default function PlannerPage() {
           <label className="flex min-w-28 items-center gap-2 text-sm">
             <input
               type="checkbox"
+              disabled={!editable}
               checked={record?.carryToNextMonth ?? false}
               onChange={(event) => updateExecution(row, { carryToNextMonth: event.target.checked })}
             />
@@ -444,23 +464,23 @@ export default function PlannerPage() {
           </div>
         </div>
         <div className="grid gap-3 md:grid-cols-5">
-          <select className="h-10 rounded-md border border-line px-3 text-sm" value={unavailableSale} onChange={(event) => setUnavailableSale(event.target.value)}>
+          <select className="h-10 rounded-md border border-line px-3 text-sm disabled:bg-slate-50" disabled={!editable} value={unavailableSale} onChange={(event) => setUnavailableSale(event.target.value)}>
             {saleOptions.map((owner) => (
               <option key={owner} value={owner}>
                 {owner}
               </option>
             ))}
           </select>
-          <input className="h-10 rounded-md border border-line px-3 text-sm" type="date" value={unavailableDate} onChange={(event) => setUnavailableDate(event.target.value)} />
-          <select className="h-10 rounded-md border border-line px-3 text-sm" value={unavailableReason} onChange={(event) => setUnavailableReason(event.target.value as UnavailableReason)}>
+          <input className="h-10 rounded-md border border-line px-3 text-sm disabled:bg-slate-50" disabled={!editable} type="date" value={unavailableDate} onChange={(event) => setUnavailableDate(event.target.value)} />
+          <select className="h-10 rounded-md border border-line px-3 text-sm disabled:bg-slate-50" disabled={!editable} value={unavailableReason} onChange={(event) => setUnavailableReason(event.target.value as UnavailableReason)}>
             {unavailableReasons.map((reason) => (
               <option key={reason} value={reason}>
                 {reason}
               </option>
             ))}
           </select>
-          <input className="h-10 rounded-md border border-line px-3 text-sm" placeholder="Ghi chú nếu có" value={unavailableNote} onChange={(event) => setUnavailableNote(event.target.value)} />
-          <button className="h-10 rounded-md bg-ink px-4 text-sm font-bold text-white disabled:opacity-50" disabled={!unavailableDate} onClick={addUnavailableDay}>
+          <input className="h-10 rounded-md border border-line px-3 text-sm disabled:bg-slate-50" disabled={!editable} placeholder="Ghi chú nếu có" value={unavailableNote} onChange={(event) => setUnavailableNote(event.target.value)} />
+          <button className="h-10 rounded-md bg-ink px-4 text-sm font-bold text-white disabled:opacity-50" disabled={!editable || !unavailableDate} onClick={addUnavailableDay}>
             Thêm ngày khóa
           </button>
         </div>
@@ -470,6 +490,7 @@ export default function PlannerPage() {
               <button
                 key={item.id}
                 className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800"
+                disabled={!editable}
                 onClick={() => removeUnavailableDay(item.id)}
                 title="Bấm để xóa ngày khóa"
               >
@@ -505,7 +526,7 @@ export default function PlannerPage() {
         </select>
         <select className="h-10 rounded-md border border-line px-3 text-sm" value={cluster} onChange={(event) => setCluster(event.target.value)}>
           <option value="all">Tất cả cụm</option>
-          {clusters.map((item) => (
+          {routeClusters.map((item) => (
             <option key={item.maCum} value={item.maCum}>
               {item.maCum}
             </option>
@@ -565,7 +586,7 @@ export default function PlannerPage() {
           Đang hiển thị {rows.length} lượt ghé. Trạng thái thực tế lưu trên trình duyệt bằng localStorage.
         </div>
         <div className="flex flex-wrap gap-2">
-          <button className="rounded-md border border-line bg-white px-4 py-2 text-sm font-bold text-ink" onClick={resetDemoExecution}>
+          <button className="rounded-md border border-line bg-white px-4 py-2 text-sm font-bold text-ink disabled:opacity-50" disabled={!editable} onClick={resetDemoExecution}>
             Reset dữ liệu demo
           </button>
           <button className="rounded-md border border-line bg-white px-4 py-2 text-sm font-bold text-ink" onClick={() => downloadCsv(`route-plan-filtered-${month}-${year}.csv`, plannerToCsv(rows))}>

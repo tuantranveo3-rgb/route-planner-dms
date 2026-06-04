@@ -5,12 +5,14 @@ import { FrequencyBadge } from "@/components/FrequencyBadge";
 import { MetricCard } from "@/components/MetricCard";
 import { OverloadWarning } from "@/components/OverloadWarning";
 import { PageHeader } from "@/components/PageHeader";
+import { loadClusters } from "@/lib/cluster-storage";
 import { formatNumber } from "@/lib/format";
 import { loadOutlets } from "@/lib/outlet-storage";
 import { clusters, salesTerritories, seedOutlets } from "@/lib/seed-data";
 import { DEFAULT_SETTINGS, enrichOutlets, generateMonthlyRoutePlan, getOverloadedClusters } from "@/lib/route-logic";
 import { loadSalesConfig } from "@/lib/sales-config";
 import type { Frequency, Outlet } from "@/types/outlet";
+import type { RouteCluster } from "@/types/cluster";
 import type { SalesTerritory } from "@/types/territory";
 
 const month = new Date().getMonth() + 1;
@@ -66,15 +68,17 @@ function getSaleWarnings(plan: ReturnType<typeof generateMonthlyRoutePlan>, terr
 export default function DashboardPage() {
   const [sourceOutlets, setSourceOutlets] = useState<Outlet[]>(seedOutlets);
   const [salesConfig, setSalesConfig] = useState<SalesTerritory[]>(salesTerritories);
+  const [routeClusters, setRouteClusters] = useState<RouteCluster[]>(clusters);
 
   useEffect(() => {
     setSourceOutlets(loadOutlets());
     setSalesConfig(loadSalesConfig());
+    setRouteClusters(loadClusters());
   }, []);
 
   const activeTerritories = useMemo(() => buildActiveTerritories(sourceOutlets, salesConfig), [sourceOutlets, salesConfig]);
   const outlets = useMemo(() => enrichOutlets(sourceOutlets), [sourceOutlets]);
-  const plan = useMemo(() => generateMonthlyRoutePlan(month, year, sourceOutlets, clusters, undefined, [], [], activeTerritories), [activeTerritories, sourceOutlets]);
+  const plan = useMemo(() => generateMonthlyRoutePlan(month, year, sourceOutlets, routeClusters, undefined, [], [], activeTerritories), [activeTerritories, sourceOutlets, routeClusters]);
   const counts = useMemo(
     () =>
       outlets.reduce<Record<Frequency, number>>(
@@ -88,7 +92,7 @@ export default function DashboardPage() {
   );
   const monthlyVisits = Number(outlets.reduce((sum, outlet) => sum + outlet.monthlyVisits, 0).toFixed(1));
   const averageDailyVisits = Number((monthlyVisits / DEFAULT_SETTINGS.workingDaysPerMonth).toFixed(1));
-  const overloaded = getOverloadedClusters(plan, clusters);
+  const overloaded = getOverloadedClusters(plan, routeClusters);
   const saleWarningItems = useMemo(() => getSaleWarnings(plan, activeTerritories), [activeTerritories, plan]);
 
   return (
@@ -152,7 +156,7 @@ export default function DashboardPage() {
       <div className="mt-6 rounded-lg border border-line bg-white p-5 shadow-soft">
         <h2 className="mb-3 text-lg font-bold">Cụm tuyến cần chú ý</h2>
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {clusters.map((cluster) => {
+          {routeClusters.map((cluster) => {
             const clusterOutlets = outlets.filter((outlet) => outlet.cumNho === cluster.maCum);
             const clusterVisits = Number(clusterOutlets.reduce((sum, outlet) => sum + outlet.monthlyVisits, 0).toFixed(1));
             return (

@@ -4,7 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import { DataTable, type Column } from "@/components/DataTable";
 import { FrequencyBadge } from "@/components/FrequencyBadge";
 import { PageHeader } from "@/components/PageHeader";
+import { canEdit, loadCurrentAccount, type AppRole } from "@/lib/auth";
 import { downloadCsv, executionHistoryToCsv, parseExecutionHistoryCsv, parseOutletCsv, plannerToCsv } from "@/lib/csv";
+import { loadClusters } from "@/lib/cluster-storage";
 import { loadOutlets, saveOutlets } from "@/lib/outlet-storage";
 import { EXECUTION_STORAGE_KEY } from "@/lib/route-execution";
 import { enrichOutlets, generateMonthlyRoutePlan } from "@/lib/route-logic";
@@ -12,6 +14,7 @@ import { sampleExecutionHistoryCsv, sampleOutletsCsv } from "@/lib/sample-csv";
 import { clusters, saleStartPoints, seedOutlets } from "@/lib/seed-data";
 import { loadSalesConfig, saveSalesConfig, syncSalesConfigWithOutlets } from "@/lib/sales-config";
 import type { EnrichedOutlet } from "@/types/outlet";
+import type { RouteCluster } from "@/types/cluster";
 import type { RouteExecutionRecord } from "@/types/route";
 import type { SalesTerritory } from "@/types/territory";
 
@@ -20,15 +23,23 @@ export default function ImportExportPage() {
   const [historyMessage, setHistoryMessage] = useState("Chưa import lịch sử thực hiện. Planner sẽ dùng lịch sử đang lưu trên trình duyệt nếu có.");
   const [historyCount, setHistoryCount] = useState(0);
   const [outlets, setOutlets] = useState(seedOutlets);
+  const [routeClusters, setRouteClusters] = useState<RouteCluster[]>(clusters);
   const [salesConfig, setSalesConfig] = useState<SalesTerritory[]>([]);
+  const [role, setRole] = useState<AppRole>("boss");
+  const editable = canEdit(role);
   const enriched = useMemo(() => enrichOutlets(outlets).slice(0, 12), [outlets]);
-  const plan = useMemo(() => generateMonthlyRoutePlan(new Date().getMonth() + 1, new Date().getFullYear(), outlets, clusters, undefined, [], saleStartPoints, salesConfig), [outlets, salesConfig]);
+  const plan = useMemo(() => generateMonthlyRoutePlan(new Date().getMonth() + 1, new Date().getFullYear(), outlets, routeClusters, undefined, [], saleStartPoints, salesConfig), [outlets, routeClusters, salesConfig]);
 
   useEffect(() => {
     setOutlets(loadOutlets());
+    setRouteClusters(loadClusters());
     setSalesConfig(loadSalesConfig());
+    setRole(loadCurrentAccount().id);
+    const listener = () => setRole(loadCurrentAccount().id);
+    window.addEventListener("route-planner-account-change", listener);
     const raw = window.localStorage.getItem(EXECUTION_STORAGE_KEY);
     setHistoryCount(raw ? (JSON.parse(raw) as RouteExecutionRecord[]).length : 0);
+    return () => window.removeEventListener("route-planner-account-change", listener);
   }, []);
 
   const columns: Column<EnrichedOutlet>[] = [
@@ -41,8 +52,12 @@ export default function ImportExportPage() {
 
   function onFileChange(file?: File) {
     if (!file) return;
+    if (!editable) {
+      setMessage("Account Người xem không được import dữ liệu.");
+      return;
+    }
     file.text().then((content) => {
-      const parsed = parseOutletCsv(content);
+      const parsed = parseOutletCsv(content, routeClusters);
       if (parsed.errors.length) {
         setMessage(parsed.errors.join(" "));
         return;
@@ -51,7 +66,7 @@ export default function ImportExportPage() {
       setOutlets(parsed.outlets);
       saveOutlets(parsed.outlets);
 
-      const nextSalesConfig = syncSalesConfigWithOutlets(loadSalesConfig(), parsed.outlets, clusters);
+      const nextSalesConfig = syncSalesConfigWithOutlets(loadSalesConfig(), parsed.outlets, routeClusters);
       setSalesConfig(nextSalesConfig);
       saveSalesConfig(nextSalesConfig);
 
@@ -88,6 +103,10 @@ export default function ImportExportPage() {
 
   function onHistoryFileChange(file?: File) {
     if (!file) return;
+    if (!editable) {
+      setHistoryMessage("Account Người xem không được import thực hiện.");
+      return;
+    }
     file.text().then((content) => {
       const parsed = parseExecutionHistoryCsv(content);
       if (parsed.errors.length) {
@@ -119,7 +138,7 @@ export default function ImportExportPage() {
       <div className="mb-4 grid gap-4 rounded-lg border border-line bg-white p-4 shadow-soft md:grid-cols-3">
         <label className="block">
           <span className="mb-2 block text-sm font-bold">Import CSV điểm bán</span>
-          <input className="block w-full text-sm" type="file" accept=".csv" onChange={(event) => onFileChange(event.target.files?.[0])} />
+          <input className="block w-full text-sm disabled:opacity-50" disabled={!editable} type="file" accept=".csv" onChange={(event) => onFileChange(event.target.files?.[0])} />
         </label>
         <button
           className="h-10 rounded-md border border-line bg-white px-4 text-sm font-bold text-ink"
@@ -136,8 +155,8 @@ export default function ImportExportPage() {
       </div>
       <div className="mb-4 grid gap-4 rounded-lg border border-line bg-white p-4 shadow-soft md:grid-cols-4">
         <label className="block">
-          <span className="mb-2 block text-sm font-bold">Import cộng dồn lịch sử thực hiện</span>
-          <input className="block w-full text-sm" type="file" accept=".csv" onChange={(event) => onHistoryFileChange(event.target.files?.[0])} />
+          <span className="mb-2 block text-sm font-bold">Import Planner thực hiện</span>
+          <input className="block w-full text-sm disabled:opacity-50" disabled={!editable} type="file" accept=".csv" onChange={(event) => onHistoryFileChange(event.target.files?.[0])} />
         </label>
         <button
           className="h-10 rounded-md border border-line bg-white px-4 text-sm font-bold text-ink"
@@ -153,7 +172,7 @@ export default function ImportExportPage() {
         </a>
       </div>
       <div className="mb-4 rounded-lg border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900">
-        Lịch sử đang lưu: <span className="font-bold">{historyCount}</span> dòng. Mỗi lần import sẽ cộng thêm hoặc cập nhật theo <span className="font-bold">visitId</span>, không xóa dữ liệu tháng/năm cũ.
+        Lịch sử đang lưu: <span className="font-bold">{historyCount}</span> dòng. File import thực hiện nên lấy từ Export CSV lịch tuyến rồi điền actualStatus, actualRevenue, note. Mỗi lần import sẽ cộng thêm hoặc cập nhật theo <span className="font-bold">visitId</span>, không xóa dữ liệu tháng/năm cũ.
       </div>
       <div className={`mb-4 rounded-lg border p-4 text-sm ${historyMessage.includes("Thiếu") || historyMessage.includes("không hợp lệ") ? "border-red-200 bg-red-50 text-red-700" : "border-line bg-white text-muted"}`}>
         {historyMessage}

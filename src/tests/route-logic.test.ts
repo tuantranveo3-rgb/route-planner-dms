@@ -6,6 +6,7 @@ import { buildCarryoversForNextMonth, buildLowFrequencyHistoryCarryovers, summar
 import {
   assignFrequency,
   calculateMonthlyVisits,
+  calculateDistanceScore,
   calculateOutletScore,
   generateMonthlyRoutePlan,
   optimizeDailyRoute,
@@ -57,6 +58,10 @@ describe("route logic", () => {
     expect(calculateMonthlyVisits("F1")).toBe(1);
     expect(calculateMonthlyVisits("F0.5")).toBe(0.5);
     expect(calculateMonthlyVisits("F0.3")).toBe(0.3);
+  });
+
+  it("calculateDistanceScore starts from zero for very far outlets", () => {
+    expect(calculateDistanceScore(21)).toBe(0);
   });
 
   it("uses imported ghiNhanF instead of recalculating route frequency", () => {
