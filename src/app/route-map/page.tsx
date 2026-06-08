@@ -313,6 +313,7 @@ export default function RouteMapPage() {
   const selectedDateText = date === "all" ? "tất cả ngày" : formatDateValue(date);
   const totalDistance = rows.reduce((sum, visit) => sum + visit.outlet.khoangCachTamCumKm, 0);
   const showInternalMap = !useStreetMap || mapStatus.includes("sơ đồ nội bộ");
+  const missingValidStartPoint = rows.length > 0 && useStreetMap && visibleStartPoints.length > 0 && startPointsForDisplay.length === 0;
 
   useEffect(() => {
     if (date !== "all" && !dateOptions.includes(date)) {
@@ -381,7 +382,7 @@ export default function RouteMapPage() {
         for (const { start, position } of startPositions) {
           const icon = leaflet.divIcon({
             className: "route-map-start-marker",
-            html: markerHtml("S", "#0f172a"),
+            html: markerHtml("0", "#0f172a"),
             iconSize: [28, 28],
             iconAnchor: [14, 14],
           });
@@ -433,7 +434,11 @@ export default function RouteMapPage() {
           map.fitBounds(leaflet.latLngBounds(allPositions), { padding: [28, 28] });
         }
         setTimeout(() => map.invalidateSize(), 50);
-        setMapStatus(`OpenStreetMap: ${visitPositions.length} điểm bán, ${startPositions.length} điểm xuất phát. Không cần API key.`);
+        setMapStatus(
+          startPositions.length
+            ? `OpenStreetMap: ${visitPositions.length} điểm bán, ${startPositions.length} điểm xuất phát #0. Không cần API key.`
+            : `OpenStreetMap: ${visitPositions.length} điểm bán, 0 điểm xuất phát hợp lệ. Hãy lưu START bằng tọa độ thật để tuyến bắt đầu từ #0.`,
+        );
       })
       .catch((error: Error) => {
         if (!cancelled) setMapStatus(`${error.message} Đang dùng sơ đồ nội bộ.`);
@@ -602,9 +607,9 @@ export default function RouteMapPage() {
                 ))}
                 {startMarkers.map(({ start, point }) => (
                   <g key={`${start.salePhuTrach}-${start.date ?? "default"}`}>
-                    <rect x={point.x - 20} y={point.y - 13} width="40" height="26" rx="7" fill="#0f172a" />
-                    <text x={point.x} y={point.y + 4} textAnchor="middle" className="fill-white text-[10px] font-bold">
-                      START
+                    <circle cx={point.x} cy={point.y} r="14" fill="#0f172a" stroke="#ffffff" strokeWidth="3" />
+                    <text x={point.x} y={point.y + 4} textAnchor="middle" className="fill-white text-[12px] font-black">
+                      0
                     </text>
                     <text x={point.x} y={point.y - 20} textAnchor="middle" className="fill-slate-900 text-[11px] font-bold">
                       {start.salePhuTrach}
@@ -632,6 +637,26 @@ export default function RouteMapPage() {
         <div className="rounded-lg border border-line bg-white p-4 shadow-soft">
           <div className="mb-3 font-bold">Thứ tự đi</div>
           <div className="grid max-h-[620px] gap-2 overflow-auto pr-1">
+            {startPointsForDisplay.map((start) => (
+              <div key={`start-${start.salePhuTrach}-${start.date ?? "default"}`} className="rounded-md bg-ink p-3 text-sm text-white">
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <span className="font-black">#0</span>
+                  <span className="rounded-full bg-white/15 px-2 py-0.5 text-xs font-bold">START</span>
+                </div>
+                <div className="font-bold">{start.tenDiemXuatPhat}</div>
+                <div className="text-xs text-slate-200">
+                  {start.loaiDiem} · {formatStartScope(start)}
+                </div>
+                <div className="mt-1 text-xs text-slate-200">
+                  X/Y: {start.toaDoX}, {start.toaDoY}
+                </div>
+              </div>
+            ))}
+            {missingValidStartPoint ? (
+              <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                Chưa có #0 hợp lệ cho bộ lọc hiện tại. Hãy nhập tọa độ xuất phát thật, ví dụ toaDoX=106.x và toaDoY=10.x, rồi bấm Lưu START.
+              </div>
+            ) : null}
             {rows.slice(0, 80).map((visit) => (
               <div key={visit.id} className="rounded-md bg-slate-50 p-3 text-sm">
                 <div className="mb-1 flex items-center justify-between gap-2">
