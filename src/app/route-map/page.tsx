@@ -120,6 +120,23 @@ function isValidVietnamStartPoint(point: SaleStartPoint) {
   return isVietnamCoordinate(point.toaDoX, point.toaDoY);
 }
 
+function normalizeVietnamCoordinateInput(x: number, y: number) {
+  if (isVietnamCoordinate(x, y)) return { x, y, wasSwapped: false };
+  if (isVietnamCoordinate(y, x)) return { x: y, y: x, wasSwapped: true };
+  return { x, y, wasSwapped: false };
+}
+
+function normalizeStartPoint(point: SaleStartPoint): SaleStartPoint {
+  const normalized = normalizeVietnamCoordinateInput(point.toaDoX, point.toaDoY);
+  if (!normalized.wasSwapped) return point;
+  return {
+    ...point,
+    toaDoX: normalized.x,
+    toaDoY: normalized.y,
+    ghiChu: [point.ghiChu, "App tự đảo lat/lng khi tải START."].filter(Boolean).join(" · "),
+  };
+}
+
 function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, (char) => {
     const entities: Record<string, string> = {
@@ -227,7 +244,9 @@ export default function RouteMapPage() {
   useEffect(() => {
     const storedOutlets = loadOutlets();
     const currentSales = new Set(storedOutlets.map((outlet) => outlet.salePhuTrach).filter(Boolean));
-    const cleanedStartPoints = loadStartPoints().filter((point) => currentSales.has(point.salePhuTrach));
+    const cleanedStartPoints = loadStartPoints()
+      .map(normalizeStartPoint)
+      .filter((point) => currentSales.has(point.salePhuTrach));
     setOutlets(storedOutlets);
     setRouteClusters(loadClusters());
     setEditingSale(Array.from(currentSales)[0] ?? "");
@@ -453,15 +472,20 @@ export default function RouteMapPage() {
     const x = Number(startX);
     const y = Number(startY);
     if (!editingSale || Number.isNaN(x) || Number.isNaN(y)) return;
+    const normalized = normalizeVietnamCoordinateInput(x, y);
+    if (normalized.wasSwapped) {
+      setStartX(String(normalized.x));
+      setStartY(String(normalized.y));
+    }
 
     const nextPoint: SaleStartPoint = {
       salePhuTrach: editingSale,
       date: startScope === "date" ? startDate : undefined,
       tenDiemXuatPhat: startName.trim() || `${startType} ${editingSale}`,
       loaiDiem: startType,
-      toaDoX: x,
-      toaDoY: y,
-      ghiChu: startNote.trim(),
+      toaDoX: normalized.x,
+      toaDoY: normalized.y,
+      ghiChu: [startNote.trim(), normalized.wasSwapped ? "App tự đảo lat/lng khi lưu START." : ""].filter(Boolean).join(" · "),
     };
     const next = [
       ...startPoints.filter((point) => !(point.salePhuTrach === editingSale && (startScope === "date" ? point.date === startDate : !point.date))),
@@ -510,8 +534,8 @@ export default function RouteMapPage() {
             ))}
           </select>
           <input className="h-10 rounded-md border border-line px-3 text-sm" value={startName} onChange={(event) => setStartName(event.target.value)} placeholder="Tên điểm xuất phát" />
-          <input className="h-10 rounded-md border border-line px-3 text-sm" value={startX} onChange={(event) => setStartX(event.target.value)} placeholder="Tọa độ X" type="number" step="0.0001" />
-          <input className="h-10 rounded-md border border-line px-3 text-sm" value={startY} onChange={(event) => setStartY(event.target.value)} placeholder="Tọa độ Y" type="number" step="0.0001" />
+          <input className="h-10 rounded-md border border-line px-3 text-sm" value={startX} onChange={(event) => setStartX(event.target.value)} placeholder="Kinh độ X, ví dụ 106.6659" title="Kinh độ/toaDoX, thường là 106.x ở TP.HCM" type="number" step="0.000001" />
+          <input className="h-10 rounded-md border border-line px-3 text-sm" value={startY} onChange={(event) => setStartY(event.target.value)} placeholder="Vĩ độ Y, ví dụ 10.7995" title="Vĩ độ/toaDoY, thường là 10.x ở TP.HCM" type="number" step="0.000001" />
           <input className="h-10 rounded-md border border-line px-3 text-sm" value={startNote} onChange={(event) => setStartNote(event.target.value)} placeholder="Ghi chú" />
           <button className="h-10 rounded-md bg-ink px-4 text-sm font-bold text-white disabled:opacity-50" disabled={startScope === "date" && !startDate} onClick={saveSelectedStartPoint}>
             Lưu START
