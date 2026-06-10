@@ -615,6 +615,12 @@ export default function PlannerPage() {
           Đang hiển thị {rows.length} lượt ghé. Trạng thái thực tế lưu trên trình duyệt bằng localStorage.
         </div>
         <div className="flex flex-wrap gap-2">
+          <button
+            className="rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-bold text-blue-700"
+            onClick={() => downloadCsv(`template-thuc-hien-${sale === "all" ? "tat-ca-sale" : sale}-${month}-${year}.csv`, plannerToCsv(selectedSaleExportPlan))}
+          >
+            Tải mẫu thực hiện
+          </button>
           <label className={`flex cursor-pointer items-center rounded-md border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-bold text-emerald-700 ${editable ? "" : "cursor-not-allowed opacity-50"}`}>
             Import thực hiện
             <input
