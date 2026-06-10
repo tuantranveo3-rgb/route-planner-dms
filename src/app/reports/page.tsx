@@ -6,6 +6,7 @@ import { FrequencyBadge } from "@/components/FrequencyBadge";
 import { MetricCard } from "@/components/MetricCard";
 import { PageHeader } from "@/components/PageHeader";
 import { loadClusters } from "@/lib/cluster-storage";
+import { downloadExcelWorkbook, type ExcelSheet } from "@/lib/excel";
 import { loadOutlets } from "@/lib/outlet-storage";
 import { buildCarryoversForNextMonth, buildLowFrequencyHistoryCarryovers, EXECUTION_STORAGE_KEY, recordsForPeriod, summarizeExecution } from "@/lib/route-execution";
 import { generateMonthlyRoutePlan } from "@/lib/route-logic";
@@ -166,6 +167,134 @@ export default function ReportsPage() {
     }).reverse();
   }, [month, outlets, records, routeClusters, sale, salesConfig, settings, year]);
 
+  const detailRows = filteredPlan.map((visit) => {
+    const record = currentRecords.find((item) => item.visitId === visit.id);
+    return {
+      visitId: visit.id,
+      month: visit.month,
+      year: visit.year,
+      week: visit.week,
+      plannedDate: visit.plannedDate,
+      dayName: visit.dayName,
+      sale: visit.outlet.salePhuTrach,
+      outletId: visit.outlet.outletId,
+      outletName: visit.outlet.tenDiemBan,
+      channel: visit.outlet.kenh,
+      chain: visit.outlet.chuoi,
+      district: visit.outlet.quanHuyen,
+      ward: visit.outlet.phuongXa,
+      clusterId: visit.clusterId,
+      frequency: visit.frequency,
+      totalScore: visit.outlet.totalScore,
+      plannedStatus: visit.status,
+      actualStatus: record?.actualStatus ?? visit.status,
+      actualVisitDate: record?.actualVisitDate ?? "",
+      actualRevenue: record?.actualRevenue ?? 0,
+      carryToNextMonth: record?.carryToNextMonth ? "TRUE" : "FALSE",
+      note: record?.note ?? "",
+      priorityReason: visit.priorityReason,
+      warning: visit.warning ?? "",
+    };
+  });
+
+  function exportReportWorkbook() {
+    const sheets: ExcelSheet[] = [
+      {
+        name: "Tong quan",
+        rows: [
+          ["Ky bao cao", monthLabel(month, year)],
+          ["Sale filter", sale === "all" ? "Tat ca sale" : sale],
+          ["Luot can di", summary.required],
+          ["Hoan tat", summary.completed],
+          ["Di thieu", summary.missed],
+          ["Ty le hoan thanh", `${summary.completionRate}%`],
+          ["Doanh thu thuc te", actualRevenue],
+          ["F0.5/F0.3 bu thang nay", lowFrequencyCarryovers],
+        ],
+      },
+      {
+        name: "Theo sale",
+        rows: [
+          ["Sale", "Can di", "Hoan tat", "Thieu", "Ty le", "Tuyen bu", "F8", "F4", "F2", "F1", "F0.5", "F0.3", "Doanh thu"],
+          ...saleRows.map((row) => [row.sale, row.required, row.completed, row.missed, `${row.completionRate}%`, row.carryover, row.f8, row.f4, row.f2, row.f1, row.f05, row.f03, row.revenue]),
+        ],
+      },
+      {
+        name: "Theo cum tuyen",
+        rows: [
+          ["Cum", "Ten cum", "Khu vuc", "Can di", "Hoan tat", "Thieu", "Doanh thu"],
+          ...routeRows.map((row) => [row.clusterId, row.clusterName, row.district, row.required, row.completed, row.missed, row.revenue]),
+        ],
+      },
+      {
+        name: "Nhieu thang",
+        rows: [
+          ["Thang", "Can di", "Hoan tat", "Thieu", "Ty le", "Doanh thu"],
+          ...multiMonthRows.map((row) => [row.label, row.required, row.completed, row.missed, `${row.rate}%`, row.revenue]),
+        ],
+      },
+      {
+        name: "Chi tiet lich",
+        rows: [
+          [
+            "visitId",
+            "month",
+            "year",
+            "week",
+            "plannedDate",
+            "dayName",
+            "sale",
+            "outletId",
+            "outletName",
+            "channel",
+            "chain",
+            "district",
+            "ward",
+            "clusterId",
+            "frequency",
+            "totalScore",
+            "plannedStatus",
+            "actualStatus",
+            "actualVisitDate",
+            "actualRevenue",
+            "carryToNextMonth",
+            "note",
+            "priorityReason",
+            "warning",
+          ],
+          ...detailRows.map((row) => [
+            row.visitId,
+            row.month,
+            row.year,
+            row.week,
+            row.plannedDate,
+            row.dayName,
+            row.sale,
+            row.outletId,
+            row.outletName,
+            row.channel,
+            row.chain,
+            row.district,
+            row.ward,
+            row.clusterId,
+            row.frequency,
+            row.totalScore,
+            row.plannedStatus,
+            row.actualStatus,
+            row.actualVisitDate,
+            row.actualRevenue,
+            row.carryToNextMonth,
+            row.note,
+            row.priorityReason,
+            row.warning,
+          ]),
+        ],
+      },
+    ];
+
+    downloadExcelWorkbook(`bao-cao-tuyen-${month}-${year}.xls`, sheets);
+  }
+
   const columns: Column<SaleReportRow>[] = [
     { key: "sale", header: "Sale", cell: (row) => <span className="font-bold">{row.sale}</span> },
     { key: "required", header: "Cần đi", cell: (row) => row.required },
@@ -231,6 +360,9 @@ export default function ReportsPage() {
             {label}
           </button>
         ))}
+        <button className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-sm font-bold text-blue-700" onClick={exportReportWorkbook}>
+          Export Excel báo cáo
+        </button>
       </div>
 
       <div className="mb-4 grid gap-4 md:grid-cols-2 xl:grid-cols-5">

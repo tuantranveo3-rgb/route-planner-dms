@@ -8,7 +8,7 @@ import { OverloadWarning } from "@/components/OverloadWarning";
 import { PageHeader } from "@/components/PageHeader";
 import { canEdit, loadCurrentAccount, type AppRole } from "@/lib/auth";
 import { loadClusters } from "@/lib/cluster-storage";
-import { downloadCsv, plannerToCsv } from "@/lib/csv";
+import { downloadCsv, parseExecutionHistoryCsv, plannerToCsv } from "@/lib/csv";
 import { loadOutlets } from "@/lib/outlet-storage";
 import {
   buildCarryoversForNextMonth,
@@ -144,6 +144,7 @@ export default function PlannerPage() {
   const [unavailableDate, setUnavailableDate] = useState("");
   const [unavailableReason, setUnavailableReason] = useState<UnavailableReason>("Ở văn phòng");
   const [unavailableNote, setUnavailableNote] = useState("");
+  const [executionImportMessage, setExecutionImportMessage] = useState("");
   const [role, setRole] = useState<AppRole>("boss");
   const editable = canEdit(role);
 
@@ -246,6 +247,34 @@ export default function PlannerPage() {
     if (!ok) return;
     setRecords([]);
     window.localStorage.removeItem(EXECUTION_STORAGE_KEY);
+  }
+
+  async function importPlannerExecution(file?: File) {
+    if (!editable) {
+      setExecutionImportMessage("Account Người xem không được import thực hiện.");
+      return;
+    }
+    if (!file) return;
+    const text = await file.text();
+    const parsed = parseExecutionHistoryCsv(text);
+    if (parsed.errors.length) {
+      setExecutionImportMessage(parsed.errors.join(" "));
+      return;
+    }
+
+    setRecords((current) => {
+      const merged = new Map(current.map((record) => [record.visitId, record]));
+      let added = 0;
+      let updated = 0;
+      for (const record of parsed.records) {
+        if (merged.has(record.visitId)) updated += 1;
+        else added += 1;
+        merged.set(record.visitId, record);
+      }
+      const next = [...merged.values()];
+      setExecutionImportMessage(`Import thực hiện thành công: thêm ${added}, cập nhật ${updated}. Tổng đang lưu ${next.length} dòng.`);
+      return next;
+    });
   }
 
   function matchesQuickFilter(visit: RouteVisit, filter: QuickRouteFilter) {
@@ -586,6 +615,19 @@ export default function PlannerPage() {
           Đang hiển thị {rows.length} lượt ghé. Trạng thái thực tế lưu trên trình duyệt bằng localStorage.
         </div>
         <div className="flex flex-wrap gap-2">
+          <label className={`flex cursor-pointer items-center rounded-md border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-bold text-emerald-700 ${editable ? "" : "cursor-not-allowed opacity-50"}`}>
+            Import thực hiện
+            <input
+              className="hidden"
+              disabled={!editable}
+              type="file"
+              accept=".csv,text/csv"
+              onChange={(event) => {
+                void importPlannerExecution(event.target.files?.[0]);
+                event.currentTarget.value = "";
+              }}
+            />
+          </label>
           <button className="rounded-md border border-line bg-white px-4 py-2 text-sm font-bold text-ink disabled:opacity-50" disabled={!editable} onClick={resetDemoExecution}>
             Reset dữ liệu demo
           </button>
@@ -603,6 +645,11 @@ export default function PlannerPage() {
           </button>
         </div>
       </div>
+      {executionImportMessage ? (
+        <div className={`mb-4 rounded-lg border p-3 text-sm ${executionImportMessage.includes("Thiếu") || executionImportMessage.includes("không hợp lệ") ? "border-red-200 bg-red-50 text-red-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}>
+          {executionImportMessage}
+        </div>
+      ) : null}
 
       <div className="mb-4 flex rounded-lg border border-line bg-white p-1 shadow-soft">
         {[
