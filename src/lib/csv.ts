@@ -3,7 +3,7 @@ import { executionStatuses } from "@/lib/route-execution";
 import { clusters as defaultClusters } from "@/lib/seed-data";
 import type { RouteCluster } from "@/types/cluster";
 import type { Frequency, Outlet } from "@/types/outlet";
-import type { RouteExecutionRecord, RouteVisit, VisitStatus, WeekKey } from "@/types/route";
+import type { RouteExecutionRecord, RouteVisit, VisitStatus, VisitType, WeekKey } from "@/types/route";
 
 export const requiredOutletColumns: Array<keyof Outlet> = [
   "outletId",
@@ -146,9 +146,22 @@ export const requiredExecutionColumns = [
   "carryToNextMonth",
 ];
 
+const visitTypes: VisitType[] = ["Theo lịch", "Ghé thêm", "Bù tuyến", "Đi sớm"];
+
+function parseBoolean(value?: string) {
+  return ["true", "1", "yes", "co", "có", "x"].includes((value ?? "").trim().toLowerCase());
+}
+
+function makeExtraVisitId(row: Record<string, string>, month: number, year: number, week: WeekKey, line: number) {
+  const datePart = row.actualVisitDate || row.ngayDuKien || "no-date";
+  const salePart = (row.salePhuTrach || "no-sale").replace(/\s+/g, "-");
+  return `EXTRA-${year}-${month}-${week}-${datePart}-${row.outletId}-${salePart}-${line}`;
+}
+
 export function parseExecutionHistoryCsv(csv: string): { records: RouteExecutionRecord[]; errors: string[] } {
   const result = Papa.parse<Record<string, string>>(csv, { header: true, skipEmptyLines: true });
   const fields = result.meta.fields ?? [];
+  const hasVisitIdColumn = fields.includes("visitId");
   const missingColumns = requiredExecutionColumns.filter((column) => !fields.includes(column));
   if (missingColumns.length) {
     return { records: [], errors: [`Thiếu cột lịch sử bắt buộc: ${missingColumns.join(", ")}`] };
@@ -161,6 +174,8 @@ export function parseExecutionHistoryCsv(csv: string): { records: RouteExecution
     const year = Number(row.year);
     const week = row.week as WeekKey;
     const actualStatus = row.actualStatus as VisitStatus;
+    const visitType = (row.visitType || "").trim() as VisitType;
+    const isExtraVisit = parseBoolean(row.isExtraVisit) || (hasVisitIdColumn && !row.visitId);
 
     if (!month || !year || !["W1", "W2", "W3", "W4"].includes(week)) {
       errors.push(`Dòng ${line}: month/year/week không hợp lệ.`);
@@ -174,10 +189,14 @@ export function parseExecutionHistoryCsv(csv: string): { records: RouteExecution
       errors.push(`Dòng ${line}: actualStatus không hợp lệ.`);
       return [];
     }
+    if (visitType && !visitTypes.includes(visitType)) {
+      errors.push(`Dòng ${line}: visitType không hợp lệ. Dùng: ${visitTypes.join(", ")}.`);
+      return [];
+    }
 
     return [
       {
-        visitId: row.visitId || `${year}-${month}-${week}-${row.outletId}`,
+        visitId: row.visitId || (hasVisitIdColumn ? makeExtraVisitId(row, month, year, week, line) : `${year}-${month}-${week}-${row.outletId}`),
         outletId: row.outletId,
         month,
         year,
@@ -187,8 +206,11 @@ export function parseExecutionHistoryCsv(csv: string): { records: RouteExecution
         actualStatus,
         actualVisitDate: row.actualVisitDate || undefined,
         actualRevenue: row.actualRevenue ? parseCsvNumber(row.actualRevenue) : undefined,
+        visitType: visitType || (isExtraVisit ? "Ghé thêm" : "Theo lịch"),
+        source: row.source || undefined,
+        isExtraVisit,
         note: row.note || undefined,
-        carryToNextMonth: ["true", "1", "yes", "co", "có"].includes(row.carryToNextMonth.trim().toLowerCase()),
+        carryToNextMonth: parseBoolean(row.carryToNextMonth),
         updatedAt: new Date().toISOString(),
       },
     ];
@@ -232,6 +254,9 @@ export function plannerToCsv(plan: RouteVisit[]): string {
       actualStatus: visit.status,
       actualVisitDate: "",
       actualRevenue: "",
+      visitType: "Theo lịch",
+      source: "",
+      isExtraVisit: "false",
       note: "",
       carryToNextMonth: "false",
       canhBao: visit.warning ?? "",
@@ -255,6 +280,9 @@ export function executionHistoryToCsv(records: RouteExecutionRecord[]): string {
         actualStatus: record.actualStatus,
         actualVisitDate: record.actualVisitDate ?? "",
         actualRevenue: record.actualRevenue ?? "",
+        visitType: record.visitType ?? (record.isExtraVisit ? "Ghé thêm" : "Theo lịch"),
+        source: record.source ?? "",
+        isExtraVisit: record.isExtraVisit ? "true" : "false",
         note: record.note ?? "",
         carryToNextMonth: record.carryToNextMonth ? "true" : "false",
         updatedAt: record.updatedAt,

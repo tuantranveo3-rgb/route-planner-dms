@@ -167,6 +167,7 @@ export default function ReportsPage() {
     }).reverse();
   }, [month, outlets, records, routeClusters, sale, salesConfig, settings, year]);
 
+  const plannedVisitIds = new Set(filteredPlan.map((visit) => visit.id));
   const detailRows = filteredPlan.map((visit) => {
     const record = currentRecords.find((item) => item.visitId === visit.id);
     return {
@@ -190,12 +191,50 @@ export default function ReportsPage() {
       actualStatus: record?.actualStatus ?? visit.status,
       actualVisitDate: record?.actualVisitDate ?? "",
       actualRevenue: record?.actualRevenue ?? 0,
+      visitType: record?.visitType ?? "Theo lịch",
+      source: record?.source ?? "",
+      isExtraVisit: record?.isExtraVisit ? "TRUE" : "FALSE",
       carryToNextMonth: record?.carryToNextMonth ? "TRUE" : "FALSE",
       note: record?.note ?? "",
       priorityReason: visit.priorityReason,
       warning: visit.warning ?? "",
     };
   });
+  const extraDetailRows = filteredRecords
+    .filter((record) => !plannedVisitIds.has(record.visitId))
+    .map((record) => {
+      const outlet = outlets.find((item) => item.outletId === record.outletId);
+      return {
+        visitId: record.visitId,
+        month: record.month,
+        year: record.year,
+        week: record.week,
+        plannedDate: "",
+        dayName: "",
+        sale: record.salePhuTrach,
+        outletId: record.outletId,
+        outletName: outlet?.tenDiemBan ?? "",
+        channel: outlet?.kenh ?? "",
+        chain: outlet?.chuoi ?? "",
+        district: outlet?.quanHuyen ?? "",
+        ward: outlet?.phuongXa ?? "",
+        clusterId: record.clusterId,
+        frequency: "",
+        totalScore: "",
+        plannedStatus: "",
+        actualStatus: record.actualStatus,
+        actualVisitDate: record.actualVisitDate ?? "",
+        actualRevenue: record.actualRevenue ?? 0,
+        visitType: record.visitType ?? "Ghé thêm",
+        source: record.source ?? "",
+        isExtraVisit: record.isExtraVisit ? "TRUE" : "FALSE",
+        carryToNextMonth: record.carryToNextMonth ? "TRUE" : "FALSE",
+        note: record.note ?? "",
+        priorityReason: "Phát sinh ngoài lịch cố định",
+        warning: "",
+      };
+    });
+  const reportDetailRows = [...detailRows, ...extraDetailRows];
 
   function exportReportWorkbook() {
     const sheets: ExcelSheet[] = [
@@ -257,12 +296,15 @@ export default function ReportsPage() {
             "actualStatus",
             "actualVisitDate",
             "actualRevenue",
+            "visitType",
+            "source",
+            "isExtraVisit",
             "carryToNextMonth",
             "note",
             "priorityReason",
             "warning",
           ],
-          ...detailRows.map((row) => [
+          ...reportDetailRows.map((row) => [
             row.visitId,
             row.month,
             row.year,
@@ -283,6 +325,9 @@ export default function ReportsPage() {
             row.actualStatus,
             row.actualVisitDate,
             row.actualRevenue,
+            row.visitType,
+            row.source,
+            row.isExtraVisit,
             row.carryToNextMonth,
             row.note,
             row.priorityReason,

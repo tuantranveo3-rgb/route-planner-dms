@@ -2,6 +2,7 @@ import type { EnrichedOutlet, Frequency } from "./outlet";
 
 export type WeekKey = "W1" | "W2" | "W3" | "W4";
 export type VisitStatus = "Chưa đi" | "Đã đi" | "Có đơn" | "Không có đơn" | "Không gặp khách" | "Dời lịch" | "CS từ xa";
+export type VisitType = "Theo lịch" | "Ghé thêm" | "Bù tuyến" | "Đi sớm";
 
 export interface PlannerSettings {
   weights: {
@@ -58,6 +59,9 @@ export interface RouteExecutionRecord {
   actualStatus: VisitStatus;
   actualVisitDate?: string;
   actualRevenue?: number;
+  visitType?: VisitType;
+  source?: string;
+  isExtraVisit?: boolean;
   note?: string;
   carryToNextMonth: boolean;
   updatedAt: string;
