@@ -164,11 +164,13 @@ export async function loadSessionUserAsync(): Promise<AppUser | null> {
 
 export async function login(username: string, password: string): Promise<{ ok: true; user: AppUser } | { ok: false; message: string }> {
   if (isSupabaseConfigured && supabase) {
+    const email = usernameToEmail(username);
+    await supabase.auth.signOut();
     const { error } = await supabase.auth.signInWithPassword({
-      email: usernameToEmail(username),
+      email,
       password,
     });
-    if (error) return { ok: false, message: "Sai tài khoản/mật khẩu hoặc tài khoản chưa được tạo trên Supabase." };
+    if (error) return { ok: false, message: `Supabase báo: ${error.message}. App đang thử đăng nhập email ${email}.` };
     const profile = await getSupabaseProfile();
     if (!profile) {
       await supabase.auth.signOut();
