@@ -2,6 +2,8 @@ export type AppRole = "boss" | "editor" | "viewer";
 
 export type AppUser = {
   id: string;
+  username: string;
+  password: string;
   name: string;
   role: AppRole;
   salePhuTrach?: string;
@@ -11,6 +13,7 @@ export type AppUser = {
 
 export const USERS_STORAGE_KEY = "route-planner-dms-users-v1";
 export const ACCOUNT_STORAGE_KEY = "route-planner-dms-current-user-v1";
+export const SESSION_STORAGE_KEY = "route-planner-dms-session-user-v1";
 
 export const roleLabels: Record<AppRole, string> = {
   boss: "Sếp",
@@ -27,6 +30,8 @@ export const roleDescriptions: Record<AppRole, string> = {
 export const seedUsers: AppUser[] = [
   {
     id: "boss-admin",
+    username: "sep",
+    password: "123456",
     name: "Sếp",
     role: "boss",
     active: true,
@@ -34,6 +39,8 @@ export const seedUsers: AppUser[] = [
   },
   {
     id: "ops-editor",
+    username: "sua",
+    password: "123456",
     name: "Người sửa",
     role: "editor",
     active: true,
@@ -41,6 +48,8 @@ export const seedUsers: AppUser[] = [
   },
   {
     id: "viewer-demo",
+    username: "xem",
+    password: "123456",
     name: "Người xem",
     role: "viewer",
     active: true,
@@ -52,6 +61,8 @@ function normalizeUsers(users: AppUser[]) {
   const activeUsers = users.length ? users : seedUsers;
   return activeUsers.map((user) => ({
     ...user,
+    username: user.username || user.id,
+    password: user.password || "123456",
     active: user.active ?? true,
     description: user.description || roleDescriptions[user.role],
   }));
@@ -75,6 +86,7 @@ export function saveUsers(users: AppUser[]) {
 export function resetUsers() {
   window.localStorage.removeItem(USERS_STORAGE_KEY);
   window.localStorage.setItem(ACCOUNT_STORAGE_KEY, seedUsers[0].id);
+  window.localStorage.removeItem(SESSION_STORAGE_KEY);
 }
 
 export function getAccount(userId?: string | null) {
@@ -84,11 +96,34 @@ export function getAccount(userId?: string | null) {
 
 export function loadCurrentAccount(): AppUser {
   if (typeof window === "undefined") return seedUsers[0];
-  return getAccount(window.localStorage.getItem(ACCOUNT_STORAGE_KEY));
+  return getAccount(window.localStorage.getItem(SESSION_STORAGE_KEY) ?? window.localStorage.getItem(ACCOUNT_STORAGE_KEY));
 }
 
 export function saveCurrentAccount(userId: string) {
   window.localStorage.setItem(ACCOUNT_STORAGE_KEY, userId);
+  window.localStorage.setItem(SESSION_STORAGE_KEY, userId);
+}
+
+export function loadSessionUser(): AppUser | null {
+  if (typeof window === "undefined") return null;
+  const sessionUserId = window.localStorage.getItem(SESSION_STORAGE_KEY);
+  if (!sessionUserId) return null;
+  const user = loadUsers().find((item) => item.id === sessionUserId && item.active);
+  return user ?? null;
+}
+
+export function login(username: string, password: string): { ok: true; user: AppUser } | { ok: false; message: string } {
+  const normalizedUsername = username.trim().toLowerCase();
+  const user = loadUsers().find((item) => item.active && item.username.trim().toLowerCase() === normalizedUsername);
+  if (!user || user.password !== password) {
+    return { ok: false, message: "Sai tài khoản hoặc mật khẩu." };
+  }
+  saveCurrentAccount(user.id);
+  return { ok: true, user };
+}
+
+export function logout() {
+  window.localStorage.removeItem(SESSION_STORAGE_KEY);
 }
 
 export function canEdit(role: AppRole) {

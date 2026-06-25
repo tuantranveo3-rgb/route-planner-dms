@@ -14,6 +14,8 @@ export default function UsersPage() {
   const [users, setUsers] = useState<AppUser[]>([]);
   const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
   const [name, setName] = useState("");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("123456");
   const [role, setRole] = useState<AppRole>("viewer");
   const [salePhuTrach, setSalePhuTrach] = useState("");
   const [description, setDescription] = useState("");
@@ -37,12 +39,24 @@ export default function UsersPage() {
   function addUser() {
     if (!canManage) return;
     const cleanName = name.trim();
+    const cleanUsername = username.trim();
+    const cleanPassword = password.trim();
     if (!cleanName) {
       setMessage("Vui lòng nhập tên user.");
       return;
     }
+    if (!cleanUsername || !cleanPassword) {
+      setMessage("Vui lòng nhập tài khoản và mật khẩu.");
+      return;
+    }
+    if (users.some((user) => user.username.trim().toLowerCase() === cleanUsername.toLowerCase())) {
+      setMessage("Tài khoản đã tồn tại, vui lòng chọn tên khác.");
+      return;
+    }
     const user: AppUser = {
       id: makeUserId(cleanName),
+      username: cleanUsername,
+      password: cleanPassword,
       name: cleanName,
       role,
       salePhuTrach: salePhuTrach || undefined,
@@ -51,6 +65,8 @@ export default function UsersPage() {
     };
     persist([...users, user], `Đã tạo user ${cleanName}.`);
     setName("");
+    setUsername("");
+    setPassword("123456");
     setSalePhuTrach("");
     setDescription("");
     setRole("viewer");
@@ -58,6 +74,25 @@ export default function UsersPage() {
 
   function updateUser(id: string, patch: Partial<AppUser>) {
     if (!canManage) return;
+    if (typeof patch.name === "string" && !patch.name.trim()) {
+      setMessage("Tên user không được để trống.");
+      return;
+    }
+    if (typeof patch.username === "string") {
+      const nextUsername = patch.username.trim().toLowerCase();
+      if (!nextUsername) {
+        setMessage("Tài khoản không được để trống.");
+        return;
+      }
+      if (users.some((user) => user.id !== id && user.username.trim().toLowerCase() === nextUsername)) {
+        setMessage("Tài khoản đã tồn tại.");
+        return;
+      }
+    }
+    if (typeof patch.password === "string" && !patch.password.trim()) {
+      setMessage("Mật khẩu không được để trống.");
+      return;
+    }
     const next = users.map((user) => (user.id === id ? { ...user, ...patch, description: patch.role && !patch.description ? roleDescriptions[patch.role] : patch.description ?? user.description } : user));
     persist(next, "Đã cập nhật user.");
     if (currentUser?.id === id) {
@@ -86,6 +121,7 @@ export default function UsersPage() {
     if (!canManage) return;
     resetUsers();
     const next = loadUsers();
+    saveCurrentAccount(next[0].id);
     setUsers(next);
     setCurrentUser(loadCurrentAccount());
     setMessage("Đã khôi phục 3 user mẫu.");
@@ -97,7 +133,7 @@ export default function UsersPage() {
     <div>
       <PageHeader
         title="User & phân quyền"
-        description="Quản lý user demo cho MVP. Dữ liệu lưu trên trình duyệt; chưa phải đăng nhập server. Role quyết định quyền sửa/import/cấu hình."
+        description="Quản lý tài khoản đăng nhập demo cho MVP. Dữ liệu lưu trên trình duyệt; chưa phải đăng nhập server. Role quyết định quyền sửa/import/cấu hình."
       />
 
       {!canManage ? (
@@ -106,8 +142,10 @@ export default function UsersPage() {
         </div>
       ) : null}
 
-      <div className="mb-4 grid gap-3 rounded-lg border border-line bg-white p-4 shadow-soft lg:grid-cols-[1.2fr_.8fr_.9fr_1.4fr_auto]">
+      <div className="mb-4 grid gap-3 rounded-lg border border-line bg-white p-4 shadow-soft lg:grid-cols-2 xl:grid-cols-[1.1fr_.9fr_.9fr_.8fr_.9fr_1.2fr_auto]">
         <input className="h-10 rounded-md border border-line px-3 text-sm disabled:bg-slate-50" disabled={!canManage} placeholder="Tên user" value={name} onChange={(event) => setName(event.target.value)} />
+        <input className="h-10 rounded-md border border-line px-3 text-sm disabled:bg-slate-50" disabled={!canManage} placeholder="Tài khoản đăng nhập" value={username} onChange={(event) => setUsername(event.target.value)} />
+        <input className="h-10 rounded-md border border-line px-3 text-sm disabled:bg-slate-50" disabled={!canManage} placeholder="Mật khẩu" value={password} onChange={(event) => setPassword(event.target.value)} />
         <select className="h-10 rounded-md border border-line px-3 text-sm disabled:bg-slate-50" disabled={!canManage} value={role} onChange={(event) => setRole(event.target.value as AppRole)}>
           {(Object.keys(roleLabels) as AppRole[]).map((item) => (
             <option key={item} value={item}>
@@ -136,6 +174,8 @@ export default function UsersPage() {
           <thead className="bg-slate-50 text-xs uppercase text-muted">
             <tr>
               <th className="px-4 py-3">User</th>
+              <th className="px-4 py-3">Tài khoản</th>
+              <th className="px-4 py-3">Mật khẩu</th>
               <th className="px-4 py-3">Role</th>
               <th className="px-4 py-3">Sale gán</th>
               <th className="px-4 py-3">Trạng thái</th>
@@ -146,7 +186,30 @@ export default function UsersPage() {
           <tbody className="divide-y divide-line">
             {users.map((user) => (
               <tr key={user.id}>
-                <td className="px-4 py-3 font-bold text-ink">{user.name}</td>
+                <td className="px-4 py-3">
+                  <input
+                    className="h-9 w-40 rounded-md border border-line px-2 font-bold text-ink disabled:border-transparent disabled:bg-transparent"
+                    disabled={!canManage}
+                    value={user.name}
+                    onChange={(event) => updateUser(user.id, { name: event.target.value })}
+                  />
+                </td>
+                <td className="px-4 py-3">
+                  <input
+                    className="h-9 w-36 rounded-md border border-line px-2 disabled:bg-slate-50"
+                    disabled={!canManage}
+                    value={user.username}
+                    onChange={(event) => updateUser(user.id, { username: event.target.value })}
+                  />
+                </td>
+                <td className="px-4 py-3">
+                  <input
+                    className="h-9 w-32 rounded-md border border-line px-2 disabled:bg-slate-50"
+                    disabled={!canManage}
+                    value={user.password}
+                    onChange={(event) => updateUser(user.id, { password: event.target.value })}
+                  />
+                </td>
                 <td className="px-4 py-3">
                   <select className="h-9 rounded-md border border-line px-2 disabled:bg-slate-50" disabled={!canManage} value={user.role} onChange={(event) => updateUser(user.id, { role: event.target.value as AppRole })}>
                     {(Object.keys(roleLabels) as AppRole[]).map((item) => (
