@@ -11,6 +11,31 @@ npm run dev
 
 Mở `http://localhost:3000`.
 
+## Supabase Auth/DB
+
+App hỗ trợ Supabase cho tài khoản đăng nhập thật. Nếu chưa cấu hình Supabase, app tự fallback về 3 user demo local.
+
+Biến môi trường cần có:
+
+```bash
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+```
+
+Setup nhanh:
+
+1. Tạo project Supabase.
+2. Vào SQL Editor, chạy file `supabase/schema.sql`.
+3. Vào Authentication > Users, tạo user email theo dạng:
+   - `sep@route-planner-dms.local`
+   - `sua@route-planner-dms.local`
+   - `xem@route-planner-dms.local`
+4. Copy `id` của từng user và insert vào bảng `user_profiles` theo mẫu cuối file `supabase/schema.sql`.
+5. Thêm 3 biến môi trường trên vào Vercel rồi Redeploy.
+
+Sau khi Supabase hoạt động, trang `User & quyền` có thể tạo user mới. App quy đổi username ngắn thành email nội bộ, ví dụ `gia-hung` thành `gia-hung@route-planner-dms.local`.
+
 ## Bản đồ tuyến
 
 Trang `Bản đồ tuyến` dùng Leaflet.js + OpenStreetMap để hiển thị:

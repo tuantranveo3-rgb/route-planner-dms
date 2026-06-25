@@ -76,8 +76,8 @@ export function Sidebar() {
         </div>
         <button
           className="mt-3 h-9 w-full rounded-md border border-line bg-white px-3 text-sm font-bold text-ink hover:bg-slate-100"
-          onClick={() => {
-            logout();
+          onClick={async () => {
+            await logout();
             window.dispatchEvent(new Event("route-planner-account-change"));
             router.replace("/login");
           }}

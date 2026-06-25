@@ -2,7 +2,23 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { PageHeader } from "@/components/PageHeader";
-import { canManageUsers, loadCurrentAccount, loadUsers, resetUsers, roleDescriptions, roleLabels, saveCurrentAccount, saveUsers, type AppRole, type AppUser } from "@/lib/auth";
+import {
+  canManageUsers,
+  createUserAsync,
+  deleteUserAsync,
+  loadCurrentAccount,
+  loadUsers,
+  loadUsersAsync,
+  resetUsers,
+  roleDescriptions,
+  roleLabels,
+  saveCurrentAccount,
+  saveUsers,
+  updateUserAsync,
+  type AppRole,
+  type AppUser,
+} from "@/lib/auth";
+import { isSupabaseConfigured } from "@/lib/supabase";
 import { loadOutlets } from "@/lib/outlet-storage";
 import { seedOutlets } from "@/lib/seed-data";
 
@@ -20,9 +36,12 @@ export default function UsersPage() {
   const [salePhuTrach, setSalePhuTrach] = useState("");
   const [description, setDescription] = useState("");
   const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    setUsers(loadUsers());
+    loadUsersAsync()
+      .then(setUsers)
+      .catch((error) => setMessage(error.message));
     setCurrentUser(loadCurrentAccount());
   }, []);
 
@@ -36,7 +55,7 @@ export default function UsersPage() {
     window.dispatchEvent(new Event("route-planner-users-change"));
   }
 
-  function addUser() {
+  async function addUser() {
     if (!canManage) return;
     const cleanName = name.trim();
     const cleanUsername = username.trim();
@@ -63,7 +82,15 @@ export default function UsersPage() {
       active: true,
       description: description.trim() || roleDescriptions[role],
     };
-    persist([...users, user], `Đã tạo user ${cleanName}.`);
+    setLoading(true);
+    try {
+      const created = await createUserAsync(user);
+      persist([...users, created], `Đã tạo user ${cleanName}.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Không tạo được user.");
+    } finally {
+      setLoading(false);
+    }
     setName("");
     setUsername("");
     setPassword("123456");
@@ -72,7 +99,7 @@ export default function UsersPage() {
     setRole("viewer");
   }
 
-  function updateUser(id: string, patch: Partial<AppUser>) {
+  async function updateUser(id: string, patch: Partial<AppUser>) {
     if (!canManage) return;
     if (typeof patch.name === "string" && !patch.name.trim()) {
       setMessage("Tên user không được để trống.");
@@ -93,8 +120,18 @@ export default function UsersPage() {
       setMessage("Mật khẩu không được để trống.");
       return;
     }
-    const next = users.map((user) => (user.id === id ? { ...user, ...patch, description: patch.role && !patch.description ? roleDescriptions[patch.role] : patch.description ?? user.description } : user));
-    persist(next, "Đã cập nhật user.");
+    const localPatch = { ...patch, description: patch.role && !patch.description ? roleDescriptions[patch.role] : patch.description };
+    const next = users.map((user) => (user.id === id ? { ...user, ...patch, description: localPatch.description ?? user.description } : user));
+    setUsers(next);
+    try {
+      await updateUserAsync(id, localPatch);
+      setMessage("Đã cập nhật user.");
+      window.dispatchEvent(new Event("route-planner-users-change"));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Không cập nhật được user.");
+      loadUsersAsync().then(setUsers).catch(() => setUsers(users));
+      return;
+    }
     if (currentUser?.id === id) {
       const updated = next.find((user) => user.id === id) ?? null;
       setCurrentUser(updated);
@@ -102,14 +139,20 @@ export default function UsersPage() {
     }
   }
 
-  function deleteUser(id: string) {
+  async function deleteUser(id: string) {
     if (!canManage) return;
     if (users.length <= 1) {
       setMessage("Phải giữ lại ít nhất 1 user.");
       return;
     }
-    const next = users.filter((user) => user.id !== id);
-    persist(next, "Đã xóa user.");
+    try {
+      await deleteUserAsync(id);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Không xóa được user.");
+      return;
+    }
+    const next = isSupabaseConfigured ? users.map((user) => (user.id === id ? { ...user, active: false } : user)) : users.filter((user) => user.id !== id);
+    persist(next, isSupabaseConfigured ? "Đã khóa user." : "Đã xóa user.");
     if (currentUser?.id === id) {
       saveCurrentAccount(next[0].id);
       setCurrentUser(next[0]);
@@ -119,6 +162,10 @@ export default function UsersPage() {
 
   function resetDefaultUsers() {
     if (!canManage) return;
+    if (isSupabaseConfigured) {
+      setMessage("Đang dùng Supabase nên không reset user mẫu trên trình duyệt. Hãy chỉnh trực tiếp user trong bảng.");
+      return;
+    }
     resetUsers();
     const next = loadUsers();
     saveCurrentAccount(next[0].id);
@@ -162,8 +209,8 @@ export default function UsersPage() {
           ))}
         </select>
         <input className="h-10 rounded-md border border-line px-3 text-sm disabled:bg-slate-50" disabled={!canManage} placeholder="Ghi chú quyền" value={description} onChange={(event) => setDescription(event.target.value)} />
-        <button className="h-10 rounded-md bg-ink px-4 text-sm font-bold text-white disabled:opacity-50" disabled={!canManage} onClick={addUser}>
-          Thêm user
+        <button className="h-10 rounded-md bg-ink px-4 text-sm font-bold text-white disabled:opacity-50" disabled={!canManage || loading} onClick={addUser}>
+          {loading ? "Đang tạo..." : "Thêm user"}
         </button>
       </div>
 
@@ -206,7 +253,7 @@ export default function UsersPage() {
                   <input
                     className="h-9 w-32 rounded-md border border-line px-2 disabled:bg-slate-50"
                     disabled={!canManage}
-                    value={user.password}
+                    value={user.password ?? ""}
                     onChange={(event) => updateUser(user.id, { password: event.target.value })}
                   />
                 </td>

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { loadSessionUser } from "@/lib/auth";
+import { loadSessionUserAsync } from "@/lib/auth";
 import { Sidebar } from "@/components/Sidebar";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -12,16 +12,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const isLoginPage = pathname === "/login";
 
   useEffect(() => {
-    const user = loadSessionUser();
-    if (!user && !isLoginPage) {
-      router.replace("/login");
-      return;
-    }
-    if (user && isLoginPage) {
-      router.replace("/dashboard");
-      return;
-    }
-    setChecked(true);
+    let alive = true;
+    loadSessionUserAsync().then((user) => {
+      if (!alive) return;
+      if (!user && !isLoginPage) {
+        router.replace("/login");
+        return;
+      }
+      if (user && isLoginPage) {
+        router.replace("/dashboard");
+        return;
+      }
+      setChecked(true);
+    });
+    return () => {
+      alive = false;
+    };
   }, [isLoginPage, router]);
 
   if (!checked && !isLoginPage) {

@@ -16,10 +16,14 @@ export default function LoginPage() {
   const [username, setUsername] = useState("sep");
   const [password, setPassword] = useState("123456");
   const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  function submit(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const result = login(username, password);
+    setLoading(true);
+    setMessage("");
+    const result = await login(username, password);
+    setLoading(false);
     if (!result.ok) {
       setMessage(result.message);
       return;
@@ -90,8 +94,8 @@ export default function LoginPage() {
 
           {message ? <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-sm font-medium text-red-700">{message}</div> : null}
 
-          <button className="mt-6 h-11 w-full rounded-md bg-ink px-4 text-sm font-bold text-white" type="submit">
-            Vào app
+          <button className="mt-6 h-11 w-full rounded-md bg-ink px-4 text-sm font-bold text-white disabled:opacity-60" type="submit" disabled={loading}>
+            {loading ? "Đang đăng nhập..." : "Vào app"}
           </button>
         </form>
       </div>
