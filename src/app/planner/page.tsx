@@ -158,8 +158,8 @@ export default function PlannerPage() {
     const storedOutlets = loadOutlets();
     setOutlets(storedOutlets);
     setUnavailableSale(Array.from(new Set(storedOutlets.map((outlet) => outlet.salePhuTrach)))[0] ?? "");
-    setRole(loadCurrentAccount().id);
-    const listener = () => setRole(loadCurrentAccount().id);
+    setRole(loadCurrentAccount().role);
+    const listener = () => setRole(loadCurrentAccount().role);
     window.addEventListener("route-planner-account-change", listener);
     return () => window.removeEventListener("route-planner-account-change", listener);
   }, []);

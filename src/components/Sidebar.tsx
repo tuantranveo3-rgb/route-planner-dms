@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, BookOpen, CalendarDays, Database, FileBarChart, Map, MapPinned, Settings, Upload, Users, Workflow } from "lucide-react";
-import { demoAccounts, loadCurrentAccount, saveCurrentAccount, type AppRole } from "@/lib/auth";
+import { BarChart3, BookOpen, CalendarDays, Database, FileBarChart, Map, MapPinned, Settings, ShieldCheck, Upload, Users, Workflow } from "lucide-react";
+import { loadCurrentAccount, loadUsers, roleDescriptions, roleLabels, saveCurrentAccount, type AppUser } from "@/lib/auth";
 
 const items = [
   { href: "/dashboard", label: "Dashboard", icon: BarChart3 },
@@ -16,18 +16,32 @@ const items = [
   { href: "/reports", label: "Báo cáo", icon: FileBarChart },
   { href: "/import-export", label: "Import/Export", icon: Upload },
   { href: "/settings", label: "Cài đặt", icon: Settings },
+  { href: "/users", label: "User & quyền", icon: ShieldCheck },
   { href: "/guide", label: "Hướng dẫn", icon: BookOpen },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
-  const [role, setRole] = useState<AppRole>("boss");
+  const [users, setUsers] = useState<AppUser[]>([]);
+  const [userId, setUserId] = useState("boss-admin");
 
   useEffect(() => {
-    setRole(loadCurrentAccount().id);
+    setUsers(loadUsers());
+    setUserId(loadCurrentAccount().id);
+    const listener = () => {
+      setUsers(loadUsers());
+      setUserId(loadCurrentAccount().id);
+    };
+    window.addEventListener("route-planner-account-change", listener);
+    window.addEventListener("route-planner-users-change", listener);
+    return () => {
+      window.removeEventListener("route-planner-account-change", listener);
+      window.removeEventListener("route-planner-users-change", listener);
+    };
   }, []);
 
-  const account = demoAccounts.find((item) => item.id === role) ?? demoAccounts[0];
+  const activeUsers = users.filter((user) => user.active);
+  const account = activeUsers.find((item) => item.id === userId) ?? activeUsers[0];
 
   return (
     <aside className="border-line bg-white p-4 shadow-soft lg:sticky lg:top-0 lg:h-screen lg:w-72 lg:border-r">
@@ -59,25 +73,26 @@ export function Sidebar() {
         })}
       </nav>
       <div className="mt-5 rounded-lg border border-line bg-slate-50 p-3">
-        <label className="mb-1 block text-xs font-bold uppercase text-muted">Account demo</label>
+        <label className="mb-1 block text-xs font-bold uppercase text-muted">User hiện tại</label>
         <select
           className="h-9 w-full rounded-md border border-line bg-white px-2 text-sm"
-          value={role}
+          value={account?.id ?? ""}
           onChange={(event) => {
-            const next = event.target.value as AppRole;
-            setRole(next);
+            const next = event.target.value;
+            setUserId(next);
             saveCurrentAccount(next);
             window.dispatchEvent(new Event("route-planner-account-change"));
           }}
         >
-          {demoAccounts.map((item) => (
+          {activeUsers.map((item) => (
             <option key={item.id} value={item.id}>
               {item.name}
             </option>
           ))}
         </select>
         <div className="mt-2 text-xs leading-5 text-muted">
-          <span className="font-bold text-ink">{account.roleLabel}</span>: {account.description}
+          <span className="font-bold text-ink">{account ? roleLabels[account.role] : "Chưa có user"}</span>: {account?.description || (account ? roleDescriptions[account.role] : "Vào User & quyền để tạo user.")}
+          {account?.salePhuTrach ? <div>Sale gán: <span className="font-bold text-ink">{account.salePhuTrach}</span></div> : null}
         </div>
       </div>
     </aside>

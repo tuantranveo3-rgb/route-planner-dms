@@ -27,8 +27,8 @@ export default function ClustersPage() {
   useEffect(() => {
     setRows(loadClusters());
     setOutlets(loadOutlets());
-    setRole(loadCurrentAccount().id);
-    const listener = () => setRole(loadCurrentAccount().id);
+    setRole(loadCurrentAccount().role);
+    const listener = () => setRole(loadCurrentAccount().role);
     window.addEventListener("route-planner-account-change", listener);
     return () => window.removeEventListener("route-planner-account-change", listener);
   }, []);

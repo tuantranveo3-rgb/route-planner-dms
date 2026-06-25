@@ -34,8 +34,8 @@ export default function ImportExportPage() {
     setOutlets(loadOutlets());
     setRouteClusters(loadClusters());
     setSalesConfig(loadSalesConfig());
-    setRole(loadCurrentAccount().id);
-    const listener = () => setRole(loadCurrentAccount().id);
+    setRole(loadCurrentAccount().role);
+    const listener = () => setRole(loadCurrentAccount().role);
     window.addEventListener("route-planner-account-change", listener);
     const raw = window.localStorage.getItem(EXECUTION_STORAGE_KEY);
     setHistoryCount(raw ? (JSON.parse(raw) as RouteExecutionRecord[]).length : 0);

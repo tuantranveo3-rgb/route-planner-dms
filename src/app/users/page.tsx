@@ -1,0 +1,196 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { PageHeader } from "@/components/PageHeader";
+import { canManageUsers, loadCurrentAccount, loadUsers, resetUsers, roleDescriptions, roleLabels, saveCurrentAccount, saveUsers, type AppRole, type AppUser } from "@/lib/auth";
+import { loadOutlets } from "@/lib/outlet-storage";
+import { seedOutlets } from "@/lib/seed-data";
+
+function makeUserId(name: string) {
+  return `${name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "user"}-${Date.now()}`;
+}
+
+export default function UsersPage() {
+  const [users, setUsers] = useState<AppUser[]>([]);
+  const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
+  const [name, setName] = useState("");
+  const [role, setRole] = useState<AppRole>("viewer");
+  const [salePhuTrach, setSalePhuTrach] = useState("");
+  const [description, setDescription] = useState("");
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    setUsers(loadUsers());
+    setCurrentUser(loadCurrentAccount());
+  }, []);
+
+  const saleOptions = useMemo(() => Array.from(new Set(loadOutlets().concat(seedOutlets).map((outlet) => outlet.salePhuTrach))).filter(Boolean).sort(), []);
+  const canManage = canManageUsers(currentUser?.role ?? "viewer");
+
+  function persist(next: AppUser[], nextMessage: string) {
+    setUsers(next);
+    saveUsers(next);
+    setMessage(nextMessage);
+    window.dispatchEvent(new Event("route-planner-users-change"));
+  }
+
+  function addUser() {
+    if (!canManage) return;
+    const cleanName = name.trim();
+    if (!cleanName) {
+      setMessage("Vui lòng nhập tên user.");
+      return;
+    }
+    const user: AppUser = {
+      id: makeUserId(cleanName),
+      name: cleanName,
+      role,
+      salePhuTrach: salePhuTrach || undefined,
+      active: true,
+      description: description.trim() || roleDescriptions[role],
+    };
+    persist([...users, user], `Đã tạo user ${cleanName}.`);
+    setName("");
+    setSalePhuTrach("");
+    setDescription("");
+    setRole("viewer");
+  }
+
+  function updateUser(id: string, patch: Partial<AppUser>) {
+    if (!canManage) return;
+    const next = users.map((user) => (user.id === id ? { ...user, ...patch, description: patch.role && !patch.description ? roleDescriptions[patch.role] : patch.description ?? user.description } : user));
+    persist(next, "Đã cập nhật user.");
+    if (currentUser?.id === id) {
+      const updated = next.find((user) => user.id === id) ?? null;
+      setCurrentUser(updated);
+      window.dispatchEvent(new Event("route-planner-account-change"));
+    }
+  }
+
+  function deleteUser(id: string) {
+    if (!canManage) return;
+    if (users.length <= 1) {
+      setMessage("Phải giữ lại ít nhất 1 user.");
+      return;
+    }
+    const next = users.filter((user) => user.id !== id);
+    persist(next, "Đã xóa user.");
+    if (currentUser?.id === id) {
+      saveCurrentAccount(next[0].id);
+      setCurrentUser(next[0]);
+      window.dispatchEvent(new Event("route-planner-account-change"));
+    }
+  }
+
+  function resetDefaultUsers() {
+    if (!canManage) return;
+    resetUsers();
+    const next = loadUsers();
+    setUsers(next);
+    setCurrentUser(loadCurrentAccount());
+    setMessage("Đã khôi phục 3 user mẫu.");
+    window.dispatchEvent(new Event("route-planner-users-change"));
+    window.dispatchEvent(new Event("route-planner-account-change"));
+  }
+
+  return (
+    <div>
+      <PageHeader
+        title="User & phân quyền"
+        description="Quản lý user demo cho MVP. Dữ liệu lưu trên trình duyệt; chưa phải đăng nhập server. Role quyết định quyền sửa/import/cấu hình."
+      />
+
+      {!canManage ? (
+        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm font-medium text-amber-800">
+          User hiện tại chỉ được xem. Chỉ role Sếp mới được tạo/sửa/xóa user.
+        </div>
+      ) : null}
+
+      <div className="mb-4 grid gap-3 rounded-lg border border-line bg-white p-4 shadow-soft lg:grid-cols-[1.2fr_.8fr_.9fr_1.4fr_auto]">
+        <input className="h-10 rounded-md border border-line px-3 text-sm disabled:bg-slate-50" disabled={!canManage} placeholder="Tên user" value={name} onChange={(event) => setName(event.target.value)} />
+        <select className="h-10 rounded-md border border-line px-3 text-sm disabled:bg-slate-50" disabled={!canManage} value={role} onChange={(event) => setRole(event.target.value as AppRole)}>
+          {(Object.keys(roleLabels) as AppRole[]).map((item) => (
+            <option key={item} value={item}>
+              {roleLabels[item]}
+            </option>
+          ))}
+        </select>
+        <select className="h-10 rounded-md border border-line px-3 text-sm disabled:bg-slate-50" disabled={!canManage} value={salePhuTrach} onChange={(event) => setSalePhuTrach(event.target.value)}>
+          <option value="">Không gán sale</option>
+          {saleOptions.map((sale) => (
+            <option key={sale} value={sale}>
+              {sale}
+            </option>
+          ))}
+        </select>
+        <input className="h-10 rounded-md border border-line px-3 text-sm disabled:bg-slate-50" disabled={!canManage} placeholder="Ghi chú quyền" value={description} onChange={(event) => setDescription(event.target.value)} />
+        <button className="h-10 rounded-md bg-ink px-4 text-sm font-bold text-white disabled:opacity-50" disabled={!canManage} onClick={addUser}>
+          Thêm user
+        </button>
+      </div>
+
+      {message ? <div className="mb-4 rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900">{message}</div> : null}
+
+      <div className="overflow-hidden rounded-lg border border-line bg-white shadow-soft">
+        <table className="min-w-full text-left text-sm">
+          <thead className="bg-slate-50 text-xs uppercase text-muted">
+            <tr>
+              <th className="px-4 py-3">User</th>
+              <th className="px-4 py-3">Role</th>
+              <th className="px-4 py-3">Sale gán</th>
+              <th className="px-4 py-3">Trạng thái</th>
+              <th className="px-4 py-3">Ghi chú</th>
+              <th className="px-4 py-3">Thao tác</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-line">
+            {users.map((user) => (
+              <tr key={user.id}>
+                <td className="px-4 py-3 font-bold text-ink">{user.name}</td>
+                <td className="px-4 py-3">
+                  <select className="h-9 rounded-md border border-line px-2 disabled:bg-slate-50" disabled={!canManage} value={user.role} onChange={(event) => updateUser(user.id, { role: event.target.value as AppRole })}>
+                    {(Object.keys(roleLabels) as AppRole[]).map((item) => (
+                      <option key={item} value={item}>
+                        {roleLabels[item]}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+                <td className="px-4 py-3">
+                  <select className="h-9 rounded-md border border-line px-2 disabled:bg-slate-50" disabled={!canManage} value={user.salePhuTrach ?? ""} onChange={(event) => updateUser(user.id, { salePhuTrach: event.target.value || undefined })}>
+                    <option value="">Không gán</option>
+                    {saleOptions.map((sale) => (
+                      <option key={sale} value={sale}>
+                        {sale}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+                <td className="px-4 py-3">
+                  <button className={`rounded-full px-3 py-1 text-xs font-bold ${user.active ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-muted"}`} disabled={!canManage} onClick={() => updateUser(user.id, { active: !user.active })}>
+                    {user.active ? "Đang dùng" : "Đã khóa"}
+                  </button>
+                </td>
+                <td className="px-4 py-3 text-muted">{user.description}</td>
+                <td className="px-4 py-3">
+                  <button className="rounded-md border border-red-200 px-3 py-1 text-xs font-bold text-red-700 disabled:opacity-50" disabled={!canManage || users.length <= 1} onClick={() => deleteUser(user.id)}>
+                    Xóa
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button className="rounded-md border border-line bg-white px-4 py-2 text-sm font-bold text-ink disabled:opacity-50" disabled={!canManage} onClick={resetDefaultUsers}>
+          Khôi phục user mẫu
+        </button>
+        <div className="rounded-md bg-slate-100 px-4 py-2 text-sm text-muted">
+          User hiện tại: <span className="font-bold text-ink">{currentUser?.name}</span> · {currentUser ? roleLabels[currentUser.role] : ""}
+        </div>
+      </div>
+    </div>
+  );
+}
