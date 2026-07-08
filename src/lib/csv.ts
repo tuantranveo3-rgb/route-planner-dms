@@ -31,6 +31,48 @@ export function validateOutletColumns(fields: string[]): string[] {
   return requiredOutletColumns.filter((column) => !fields.includes(column));
 }
 
+function normalizeHeaderKey(value: string) {
+  return value
+    .replace(/^\uFEFF/, "")
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+const outletHeaderAliases: Partial<Record<keyof Outlet, string[]>> = {
+  outletId: ["outletId", "outlet id", "ma diem ban", "ma khach hang", "ma outlet"],
+  tenDiemBan: ["tenDiemBan", "ten diem ban", "ten outlet", "ten khach hang", "ten cua hang"],
+  kenh: ["kenh", "channel"],
+  chuoi: ["chuoi", "chain"],
+  tinhThanh: ["tinhThanh", "tinh thanh", "thanh pho", "city", "province"],
+  quanHuyen: ["quanHuyen", "quan huyen", "quan", "district"],
+  phuongXa: ["phuongXa", "phuong xa", "phuong", "ward"],
+  diaChi: ["diaChi", "dia chi", "address"],
+  cumNho: ["cumNho", "cum nho", "cum", "cluster", "ma cum"],
+  salePhuTrach: ["salePhuTrach", "sale phu trach", "sale", "nhan vien ban hang", "salesman"],
+  doanhSo3Thang: ["doanhSo3Thang", "doanh so 3 thang", "ds 3 thang", "ds3thang", "sales 3 months", "revenue"],
+  soDon3Thang: ["soDon3Thang", "so don 3 thang", "don 3 thang", "orders 3 months", "orders"],
+  tiemNang: ["tiemNang", "tiem nang", "potential"],
+  ruiRoMatKhach: ["ruiRoMatKhach", "rui ro mat khach", "rui ro", "risk"],
+  khoangCachTamCumKm: ["khoangCachTamCumKm", "khoang cach tam cum", "khoang cach", "distance"],
+  toaDoX: ["toaDoX", "toa do x", "kinh do", "longitude", "lng", "long"],
+  toaDoY: ["toaDoY", "toa do y", "vi do", "latitude", "lat"],
+  ghiNhanF: ["ghiNhanF", "ghi nhan f", "f", "tan suat", "frequency"],
+  ghiChu: ["ghiChu", "ghi chu", "note", "notes"],
+};
+
+const outletHeaderLookup = new Map<string, keyof Outlet>();
+for (const [canonical, aliases] of Object.entries(outletHeaderAliases) as Array<[keyof Outlet, string[]]>) {
+  for (const alias of aliases) outletHeaderLookup.set(normalizeHeaderKey(alias), canonical);
+}
+
+function normalizeOutletHeader(header: string) {
+  const clean = header.replace(/^\uFEFF/, "").trim();
+  return outletHeaderLookup.get(normalizeHeaderKey(clean)) ?? clean;
+}
+
 function roundDistance(value: number) {
   return Number(value.toFixed(1));
 }
@@ -75,7 +117,7 @@ function parseFrequency(value: string | undefined): Frequency | undefined {
 }
 
 export function parseOutletCsv(csv: string, routeClusters: RouteCluster[] = defaultClusters): { outlets: Outlet[]; errors: string[] } {
-  const result = Papa.parse<Record<string, string>>(csv, { header: true, skipEmptyLines: true });
+  const result = Papa.parse<Record<string, string>>(csv, { header: true, skipEmptyLines: true, transformHeader: normalizeOutletHeader });
   const fields = result.meta.fields ?? [];
   const missingColumns = validateOutletColumns(fields);
   if (missingColumns.length) {

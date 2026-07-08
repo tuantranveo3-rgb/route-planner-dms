@@ -271,6 +271,19 @@ describe("route logic", () => {
     expect(parsed.outlets[0].toaDoX).toBe(106.701);
   });
 
+  it("accepts common Vietnamese outlet csv header aliases", () => {
+    const csv = [
+      "ma diem ban,ten diem ban,kenh,chuoi,thanh pho,quan,phuong,dia chi,ma cum,sale,DS 3 thang,So don 3 thang,tiem nang,rui ro,kinh do,vi do,ghi chu",
+      "CSV-Alias,Outlet Alias,GT,C2,TP.HCM,Quan 1,Ben Nghe,Test,Q1-A,Sale A,\"6,448,190.00\",2,3,4,106.701,10.78187,Alias header",
+    ].join("\n");
+    const parsed = parseOutletCsv(csv, clusters);
+
+    expect(parsed.errors).toHaveLength(0);
+    expect(parsed.outlets[0].outletId).toBe("CSV-Alias");
+    expect(parsed.outlets[0].doanhSo3Thang).toBe(6448190);
+    expect(parsed.outlets[0].soDon3Thang).toBe(2);
+  });
+
   it("parses imported ghiNhanF from outlet csv", () => {
     const csv = [
       "outletId,tenDiemBan,kenh,chuoi,tinhThanh,quanHuyen,phuongXa,diaChi,cumNho,salePhuTrach,doanhSo3Thang,soDon3Thang,tiemNang,ruiRoMatKhach,toaDoX,toaDoY,ghiNhanF,ghiChu",
