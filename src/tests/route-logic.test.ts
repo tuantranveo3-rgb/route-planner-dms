@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { clusters, salesTerritories, seedOutlets } from "@/lib/seed-data";
 import { findUnassignedClusters, summarizeTerritories } from "@/lib/territory-logic";
-import { parseExecutionHistoryCsv, parseOutletCsv } from "@/lib/csv";
+import { buildImportedClusters, parseExecutionHistoryCsv, parseOutletCsv } from "@/lib/csv";
 import { buildCarryoversForNextMonth, buildLowFrequencyHistoryCarryovers, summarizeExecution, upsertExecutionRecord } from "@/lib/route-execution";
 import {
   assignFrequency,
@@ -282,6 +282,21 @@ describe("route logic", () => {
     expect(parsed.outlets[0].outletId).toBe("CSV-Alias");
     expect(parsed.outlets[0].doanhSo3Thang).toBe(6448190);
     expect(parsed.outlets[0].soDon3Thang).toBe(2);
+  });
+
+  it("normalizes cluster ids and accepts imported clusters that are not seeded", () => {
+    const csv = [
+      "outletId,tenDiemBan,kenh,chuoi,tinhThanh,quanHuyen,phuongXa,diaChi,cumNho,salePhuTrach,doanhSo3Thang,soDon3Thang,tiemNang,ruiRoMatKhach,toaDoX,toaDoY,ghiChu",
+      "CSV-New-1,Outlet New 1,GT,C2,TP.HCM,Quan Moi,Phuong 1,Test,Q1 - B,Sale A,100000000,5,3,2,106.7,10.7,New cluster",
+      "CSV-New-2,Outlet New 2,GT,C2,TP.HCM,Quan Moi,Phuong 2,Test,TEL - B,Sale A,100000000,5,3,2,106.8,10.8,New cluster",
+    ].join("\n");
+    const parsed = parseOutletCsv(csv, []);
+    const importedClusters = buildImportedClusters(parsed.outlets, []);
+
+    expect(parsed.errors).toHaveLength(0);
+    expect(parsed.outlets.map((outlet) => outlet.cumNho)).toEqual(["Q1-B", "TEL-B"]);
+    expect(parsed.outlets.every((outlet) => !Number.isNaN(outlet.khoangCachTamCumKm))).toBe(true);
+    expect(importedClusters.map((cluster) => cluster.maCum)).toEqual(["Q1-B", "TEL-B"]);
   });
 
   it("parses imported ghiNhanF from outlet csv", () => {

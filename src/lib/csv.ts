@@ -73,6 +73,52 @@ function normalizeOutletHeader(header: string) {
   return outletHeaderLookup.get(normalizeHeaderKey(clean)) ?? clean;
 }
 
+export function normalizeClusterId(value: string | undefined) {
+  return String(value ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s*-\s*/g, "-")
+    .replace(/\s+/g, "-");
+}
+
+function weekdayByIndex(index: number): RouteCluster["ngayDiCoDinh"] {
+  const days: RouteCluster["ngayDiCoDinh"][] = ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7"];
+  return days[index % days.length];
+}
+
+export function buildImportedClusters(outlets: Outlet[], baseClusters: RouteCluster[] = defaultClusters): RouteCluster[] {
+  const clusterById = new Map(baseClusters.map((cluster) => [normalizeClusterId(cluster.maCum), { ...cluster, maCum: normalizeClusterId(cluster.maCum) }]));
+  const grouped = new Map<string, Outlet[]>();
+
+  for (const outlet of outlets) {
+    const clusterId = normalizeClusterId(outlet.cumNho);
+    if (!clusterId || clusterById.has(clusterId)) continue;
+    grouped.set(clusterId, [...(grouped.get(clusterId) ?? []), outlet]);
+  }
+
+  let index = clusterById.size;
+  for (const [clusterId, rows] of grouped) {
+    const validCoordinates = rows.filter((row) => !Number.isNaN(row.toaDoX) && !Number.isNaN(row.toaDoY));
+    const centerX = validCoordinates.length ? validCoordinates.reduce((sum, row) => sum + row.toaDoX, 0) / validCoordinates.length : 0;
+    const centerY = validCoordinates.length ? validCoordinates.reduce((sum, row) => sum + row.toaDoY, 0) / validCoordinates.length : 0;
+    const wards = Array.from(new Set(rows.map((row) => row.phuongXa).filter(Boolean)));
+    const districts = Array.from(new Set(rows.map((row) => row.quanHuyen).filter(Boolean)));
+    clusterById.set(clusterId, {
+      maCum: clusterId,
+      tenCum: `${districts[0] || "Cụm mới"} - ${wards.slice(0, 2).join(", ") || clusterId}`,
+      quanHuyen: districts.join(", ") || "Chưa xác định",
+      danhSachPhuongXa: wards.length ? wards : ["Chưa xác định"],
+      ngayDiCoDinh: weekdayByIndex(index),
+      capacityNgay: 18,
+      toaDoTamX: Number(centerX.toFixed(6)),
+      toaDoTamY: Number(centerY.toFixed(6)),
+    });
+    index += 1;
+  }
+
+  return Array.from(clusterById.values());
+}
+
 function roundDistance(value: number) {
   return Number(value.toFixed(1));
 }
@@ -124,9 +170,36 @@ export function parseOutletCsv(csv: string, routeClusters: RouteCluster[] = defa
     return { outlets: [], errors: [`Thiếu cột bắt buộc: ${missingColumns.join(", ")}. Cột khoangCachTamCumKm không bắt buộc, app sẽ tự tính nếu có tọa độ.`] };
   }
 
-  const clusterById = new Map(routeClusters.map((cluster) => [cluster.maCum, cluster]));
+  const clusterById = new Map(routeClusters.map((cluster) => [normalizeClusterId(cluster.maCum), { ...cluster, maCum: normalizeClusterId(cluster.maCum) }]));
   const hasDistanceColumn = fields.includes("khoangCachTamCumKm");
   const errors: string[] = [];
+  const inferredClusterRows = new Map<string, Record<string, string>[]>();
+
+  for (const row of result.data) {
+    const clusterId = normalizeClusterId(row.cumNho);
+    if (!clusterId || clusterById.has(clusterId)) continue;
+    inferredClusterRows.set(clusterId, [...(inferredClusterRows.get(clusterId) ?? []), row]);
+  }
+
+  let inferredIndex = clusterById.size;
+  for (const [clusterId, rows] of inferredClusterRows) {
+    const coordinateRows = rows
+      .map((row) => ({ x: parseCsvNumber(row.toaDoX), y: parseCsvNumber(row.toaDoY) }))
+      .filter((row) => !Number.isNaN(row.x) && !Number.isNaN(row.y));
+    const centerX = coordinateRows.length ? coordinateRows.reduce((sum, row) => sum + row.x, 0) / coordinateRows.length : 0;
+    const centerY = coordinateRows.length ? coordinateRows.reduce((sum, row) => sum + row.y, 0) / coordinateRows.length : 0;
+    clusterById.set(clusterId, {
+      maCum: clusterId,
+      tenCum: clusterId,
+      quanHuyen: rows[0]?.quanHuyen || "Chưa xác định",
+      danhSachPhuongXa: Array.from(new Set(rows.map((row) => row.phuongXa).filter(Boolean))),
+      ngayDiCoDinh: weekdayByIndex(inferredIndex),
+      capacityNgay: 18,
+      toaDoTamX: Number(centerX.toFixed(6)),
+      toaDoTamY: Number(centerY.toFixed(6)),
+    });
+    inferredIndex += 1;
+  }
 
   const outlets: Outlet[] = result.data.map((row, index) => {
     const line = index + 2;
@@ -135,13 +208,13 @@ export function parseOutletCsv(csv: string, routeClusters: RouteCluster[] = defa
     const importedDistance = hasDistanceColumn && row.khoangCachTamCumKm?.trim() ? parseCsvNumber(row.khoangCachTamCumKm) : Number.NaN;
     const rawFrequency = row.ghiNhanF || row.F || row.tanSuat;
     const ghiNhanF = parseFrequency(rawFrequency);
-    const cluster = clusterById.get(row.cumNho);
+    const cumNho = normalizeClusterId(row.cumNho);
+    const cluster = clusterById.get(cumNho);
     const calculatedDistance = calculateDistanceToClusterCenter(toaDoX, toaDoY, cluster);
     const khoangCachTamCumKm = Number.isNaN(importedDistance) ? calculatedDistance : importedDistance;
 
-    if (!cluster) errors.push(`Dòng ${line}: cumNho "${row.cumNho}" chưa có trong danh sách cụm, không tự tính được khoảng cách tâm cụm.`);
     if (Number.isNaN(toaDoX) || Number.isNaN(toaDoY)) errors.push(`Dòng ${line}: toaDoX/toaDoY không hợp lệ.`);
-    if (Number.isNaN(khoangCachTamCumKm)) errors.push(`Dòng ${line}: khoangCachTamCumKm trống và không tự tính được từ tọa độ/tâm cụm.`);
+    if (Number.isNaN(khoangCachTamCumKm) && hasDistanceColumn) errors.push(`Dòng ${line}: khoangCachTamCumKm không hợp lệ.`);
 
     if (rawFrequency && !ghiNhanF) errors.push(`Dòng ${line}: ghiNhanF "${rawFrequency}" không hợp lệ. Chỉ nhận F8, F4, F2, F1, F0.5, F0.3.`);
 
@@ -154,7 +227,7 @@ export function parseOutletCsv(csv: string, routeClusters: RouteCluster[] = defa
       quanHuyen: row.quanHuyen,
       phuongXa: row.phuongXa,
       diaChi: row.diaChi,
-      cumNho: row.cumNho,
+      cumNho,
       salePhuTrach: row.salePhuTrach,
       doanhSo3Thang: parseCsvNumber(row.doanhSo3Thang),
       soDon3Thang: parseCsvNumber(row.soDon3Thang),

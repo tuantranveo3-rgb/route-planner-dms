@@ -5,8 +5,8 @@ import { DataTable, type Column } from "@/components/DataTable";
 import { FrequencyBadge } from "@/components/FrequencyBadge";
 import { PageHeader } from "@/components/PageHeader";
 import { canEdit, loadCurrentAccount, type AppRole } from "@/lib/auth";
-import { downloadCsv, executionHistoryToCsv, parseExecutionHistoryCsv, parseOutletCsv, plannerToCsv } from "@/lib/csv";
-import { loadClusters } from "@/lib/cluster-storage";
+import { buildImportedClusters, downloadCsv, executionHistoryToCsv, parseExecutionHistoryCsv, parseOutletCsv, plannerToCsv } from "@/lib/csv";
+import { loadClusters, saveClusters } from "@/lib/cluster-storage";
 import { loadOutlets, saveOutlets } from "@/lib/outlet-storage";
 import { EXECUTION_STORAGE_KEY } from "@/lib/route-execution";
 import { enrichOutlets, generateMonthlyRoutePlan } from "@/lib/route-logic";
@@ -66,7 +66,11 @@ export default function ImportExportPage() {
       setOutlets(parsed.outlets);
       saveOutlets(parsed.outlets);
 
-      const nextSalesConfig = syncSalesConfigWithOutlets(loadSalesConfig(), parsed.outlets, routeClusters);
+      const nextClusters = buildImportedClusters(parsed.outlets, routeClusters);
+      setRouteClusters(nextClusters);
+      saveClusters(nextClusters);
+
+      const nextSalesConfig = syncSalesConfigWithOutlets(loadSalesConfig(), parsed.outlets, nextClusters);
       setSalesConfig(nextSalesConfig);
       saveSalesConfig(nextSalesConfig);
 
