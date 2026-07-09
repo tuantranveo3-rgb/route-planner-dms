@@ -173,6 +173,46 @@ describe("route logic", () => {
     expect(dayByCluster.get("Q1-B")).toBe("Thứ 3");
   });
 
+  it("auto-spreads imported sale clusters when no territory day plan exists", () => {
+    const outlets: Outlet[] = [
+      { ...strongOutlet, outletId: "AUTO-A", cumNho: "Q1-A", salePhuTrach: "Sale Import", ghiNhanF: "F1" },
+      { ...strongOutlet, outletId: "AUTO-B", cumNho: "TB-A", salePhuTrach: "Sale Import", ghiNhanF: "F1" },
+    ];
+    const plan = generateMonthlyRoutePlan(7, 2026, outlets, clusters);
+    const dayByCluster = new Map(plan.map((visit) => [visit.clusterId, visit.dayName]));
+
+    expect(dayByCluster.get("Q1-A")).toBe("Thứ 2");
+    expect(dayByCluster.get("TB-A")).toBe("Thứ 3");
+  });
+
+  it("keeps the first valid day when the same cluster is selected on many days", () => {
+    const outlets: Outlet[] = [
+      { ...strongOutlet, outletId: "DUP-A", cumNho: "Q1-A", salePhuTrach: "Sale Duplicate", ghiNhanF: "F1" },
+      { ...strongOutlet, outletId: "DUP-B", cumNho: "Q1-B", salePhuTrach: "Sale Duplicate", ghiNhanF: "F1" },
+    ];
+    const territories = [
+      {
+        salePhuTrach: "Sale Duplicate",
+        khuVucPhuTrach: ["Quan 1"],
+        cumNhoPhuTrach: ["Q1-A", "Q1-B"],
+        saleBackup: "",
+        ngayDiUuTien: ["Thứ 2"],
+        lichTheoNgay: [
+          { dayName: "Thứ 2", clusterIds: ["Q1-A", "Q1-B"] },
+          { dayName: "Thứ 3", clusterIds: ["Q1-A", "Q1-B"] },
+        ],
+        minVisitsPerDay: 1,
+        maxVisitsPerDay: 15,
+        ghiChu: "",
+      },
+    ];
+    const plan = generateMonthlyRoutePlan(7, 2026, outlets, clusters, undefined, [], [], territories);
+    const dayByCluster = new Map(plan.map((visit) => [visit.clusterId, visit.dayName]));
+
+    expect(dayByCluster.get("Q1-A")).toBe("Thứ 2");
+    expect(dayByCluster.get("Q1-B")).toBe("Thứ 3");
+  });
+
   it("does not schedule visits on sale unavailable days", () => {
     const territory = {
       salePhuTrach: "Sale Off",

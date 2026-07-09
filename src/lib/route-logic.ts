@@ -190,14 +190,41 @@ export function generateMonthlyRoutePlan(
   const sorted = [...enriched].sort((a, b) => frequencyRank[b.frequency] - frequencyRank[a.frequency] || b.totalScore - a.totalScore);
   const outletById = new Map(enriched.map((outlet) => [outlet.outletId, outlet]));
   const lowFrequencyCarryoverOutlets = new Set<string>();
-  const scheduledDayBySaleCluster = new Map(
-    salesTerritories.flatMap((territory) =>
-      (territory.lichTheoNgay ?? []).flatMap((dayPlan) =>
-        dayPlan.clusterIds.map((clusterId, index) => [`${territory.salePhuTrach}-${clusterId}`, spreadClusterDayName(dayPlan.dayName, index)] as const),
-      ),
-    ),
-  );
   const territoryBySale = new Map(salesTerritories.map((territory) => [territory.salePhuTrach, territory]));
+  const scheduledDayBySaleCluster = new Map<string, string>();
+
+  for (const territory of salesTerritories) {
+    for (const dayPlan of territory.lichTheoNgay ?? []) {
+      dayPlan.clusterIds.forEach((clusterId, index) => {
+        const key = `${territory.salePhuTrach}-${clusterId}`;
+        if (!scheduledDayBySaleCluster.has(key)) {
+          scheduledDayBySaleCluster.set(key, spreadClusterDayName(dayPlan.dayName, index));
+        }
+      });
+    }
+  }
+
+  const clusterIdsBySale = new Map<string, string[]>();
+  for (const outlet of enriched) {
+    if (!clusterById.has(outlet.cumNho)) continue;
+    const current = clusterIdsBySale.get(outlet.salePhuTrach) ?? [];
+    if (!current.includes(outlet.cumNho)) {
+      current.push(outlet.cumNho);
+      clusterIdsBySale.set(outlet.salePhuTrach, current);
+    }
+  }
+
+  for (const [saleName, clusterIds] of clusterIdsBySale) {
+    const territory = territoryBySale.get(saleName);
+    const preferredDays = territory?.ngayDiUuTien?.length ? territory.ngayDiUuTien : workingDayNames;
+    clusterIds.sort().forEach((clusterId, index) => {
+      const key = `${saleName}-${clusterId}`;
+      if (!scheduledDayBySaleCluster.has(key)) {
+        const preferredDay = preferredDays[index % preferredDays.length] ?? workingDayNames[index % workingDayNames.length];
+        scheduledDayBySaleCluster.set(key, spreadClusterDayName(preferredDay, Math.floor(index / preferredDays.length)));
+      }
+    });
+  }
   const unavailableBySaleDate = new Map(unavailableDays.map((item) => [`${item.salePhuTrach}-${item.date}`, item]));
 
   function getUnavailableReason(saleName: string, plannedDate: string) {

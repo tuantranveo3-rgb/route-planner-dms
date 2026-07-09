@@ -311,7 +311,7 @@ export default function RouteMapPage() {
     .sort((a, b) => a.plannedDate.localeCompare(b.plannedDate) || a.outlet.salePhuTrach.localeCompare(b.outlet.salePhuTrach) || a.routeOrder - b.routeOrder);
   const visibleClusterIds = Array.from(new Set(rows.map((visit) => visit.clusterId)));
   const isMultiClusterOverview = cluster === "all" && visibleClusterIds.length > 1;
-  const shouldDrawRouteLines = !isMultiClusterOverview;
+  const shouldDrawRouteLines = cluster !== "all";
   const dailyStartBySale = new Map(currentStartPoints.filter((point) => point.date).map((point) => [`${point.date}-${point.salePhuTrach}`, point]));
   const defaultStartBySale = new Map(currentStartPoints.filter((point) => !point.date).map((point) => [point.salePhuTrach, point]));
   const visibleStartPoints = Array.from(
@@ -637,9 +637,9 @@ export default function RouteMapPage() {
           <div className="border-b border-line px-4 py-3">
             <div className="font-bold text-ink">{useStreetMap ? "OpenStreetMap tuyến bán hàng" : "Sơ đồ tuyến nội bộ"}</div>
             <div className="text-sm text-muted">{mapStatus}</div>
-            {isMultiClusterOverview ? (
+            {cluster === "all" && rows.length > 0 ? (
               <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">
-                Đang xem nhiều cụm cùng lúc. App đang ẩn đường nối để tránh hiểu nhầm là một tuyến; chọn một cụm cụ thể để xem thứ tự đi trong ngày rõ nhất.
+                Đang xem {isMultiClusterOverview ? "nhiều cụm" : "tổng quan"} cùng lúc. App đang ẩn đường nối để tránh hiểu nhầm là một tuyến; chọn một cụm cụ thể để xem thứ tự đi trong ngày rõ nhất.
               </div>
             ) : null}
           </div>
