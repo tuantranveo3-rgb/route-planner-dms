@@ -213,6 +213,30 @@ describe("route logic", () => {
     expect(dayByCluster.get("Q1-B")).toBe("Thứ 3");
   });
 
+  it("only schedules clusters selected in the sale daily territory plan", () => {
+    const outlets: Outlet[] = [
+      { ...strongOutlet, outletId: "IN-PLAN", cumNho: "GV-A", quanHuyen: "Gò Vấp", salePhuTrach: "Sale Strict", ghiNhanF: "F1" },
+      { ...strongOutlet, outletId: "OUT-PLAN", cumNho: "BT-A", quanHuyen: "Bình Thạnh", salePhuTrach: "Sale Strict", ghiNhanF: "F1" },
+    ];
+    const territories = [
+      {
+        salePhuTrach: "Sale Strict",
+        khuVucPhuTrach: ["Bình Thạnh", "Gò Vấp"],
+        cumNhoPhuTrach: ["BT-A", "GV-A"],
+        saleBackup: "",
+        ngayDiUuTien: ["Thứ 2"],
+        lichTheoNgay: [{ dayName: "Thứ 2", clusterIds: ["GV-A"] }],
+        minVisitsPerDay: 1,
+        maxVisitsPerDay: 15,
+        ghiChu: "",
+      },
+    ];
+    const plan = generateMonthlyRoutePlan(7, 2026, outlets, clusters, undefined, [], [], territories);
+
+    expect(plan.map((visit) => visit.outlet.outletId)).toEqual(["IN-PLAN"]);
+    expect(plan[0].dayName).toBe("Thứ 2");
+  });
+
   it("does not schedule visits on sale unavailable days", () => {
     const territory = {
       salePhuTrach: "Sale Off",

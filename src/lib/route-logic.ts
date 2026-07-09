@@ -191,6 +191,12 @@ export function generateMonthlyRoutePlan(
   const outletById = new Map(enriched.map((outlet) => [outlet.outletId, outlet]));
   const lowFrequencyCarryoverOutlets = new Set<string>();
   const territoryBySale = new Map(salesTerritories.map((territory) => [territory.salePhuTrach, territory]));
+  const configuredClusterIdsBySale = new Map(
+    salesTerritories.map((territory) => {
+      const dayPlanClusterIds = (territory.lichTheoNgay ?? []).flatMap((dayPlan) => dayPlan.clusterIds);
+      return [territory.salePhuTrach, new Set(dayPlanClusterIds.length ? dayPlanClusterIds : territory.cumNhoPhuTrach)] as const;
+    }),
+  );
   const scheduledDayBySaleCluster = new Map<string, string>();
 
   for (const territory of salesTerritories) {
@@ -226,6 +232,12 @@ export function generateMonthlyRoutePlan(
     });
   }
   const unavailableBySaleDate = new Map(unavailableDays.map((item) => [`${item.salePhuTrach}-${item.date}`, item]));
+
+  function isOutletAllowedByTerritory(outlet: EnrichedOutlet) {
+    const configuredClusterIds = configuredClusterIdsBySale.get(outlet.salePhuTrach);
+    if (!configuredClusterIds || configuredClusterIds.size === 0) return true;
+    return configuredClusterIds.has(outlet.cumNho);
+  }
 
   function getUnavailableReason(saleName: string, plannedDate: string) {
     const unavailable = unavailableBySaleDate.get(`${saleName}-${plannedDate}`);
@@ -375,6 +387,7 @@ export function generateMonthlyRoutePlan(
     if (!outlet) continue;
     const cluster = clusterById.get(outlet.cumNho);
     if (!cluster) continue;
+    if (!isOutletAllowedByTerritory(outlet)) continue;
     if (outlet.frequency === "F0.5" || outlet.frequency === "F0.3") {
       lowFrequencyCarryoverOutlets.add(outlet.outletId);
     }
@@ -411,6 +424,7 @@ export function generateMonthlyRoutePlan(
     }
     const cluster = clusterById.get(outlet.cumNho);
     if (!cluster) continue;
+    if (!isOutletAllowedByTerritory(outlet)) continue;
     const scheduledDayName = scheduledDayBySaleCluster.get(`${outlet.salePhuTrach}-${outlet.cumNho}`) ?? cluster.ngayDiCoDinh;
     const targetWeeks = getWeeksForOutlet(outlet, f2CounterByCluster, f1CounterByCluster);
 
