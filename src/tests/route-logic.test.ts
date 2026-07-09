@@ -299,6 +299,18 @@ describe("route logic", () => {
     expect(importedClusters.map((cluster) => cluster.maCum)).toEqual(["Q1-B", "TEL-B"]);
   });
 
+  it("normalizes imported Vietnam coordinates when latitude and longitude are swapped", () => {
+    const csv = [
+      "outletId,tenDiemBan,kenh,chuoi,tinhThanh,quanHuyen,phuongXa,diaChi,cumNho,salePhuTrach,doanhSo3Thang,soDon3Thang,tiemNang,ruiRoMatKhach,toaDoX,toaDoY,ghiChu",
+      "CSV-Swap,Outlet Swap,GT,C2,TP.HCM,Quan 1,Ben Nghe,Test,Q1-A,Sale A,100000000,5,3,2,10.78187,106.701,Swapped lat lng",
+    ].join("\n");
+    const parsed = parseOutletCsv(csv, clusters);
+
+    expect(parsed.errors).toHaveLength(0);
+    expect(parsed.outlets[0].toaDoX).toBe(106.701);
+    expect(parsed.outlets[0].toaDoY).toBe(10.78187);
+  });
+
   it("parses imported ghiNhanF from outlet csv", () => {
     const csv = [
       "outletId,tenDiemBan,kenh,chuoi,tinhThanh,quanHuyen,phuongXa,diaChi,cumNho,salePhuTrach,doanhSo3Thang,soDon3Thang,tiemNang,ruiRoMatKhach,toaDoX,toaDoY,ghiNhanF,ghiChu",

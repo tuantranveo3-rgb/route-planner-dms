@@ -126,6 +126,16 @@ function normalizeVietnamCoordinateInput(x: number, y: number) {
   return { x, y, wasSwapped: false };
 }
 
+function normalizeOutletCoordinates(outlet: Outlet): Outlet {
+  const normalized = normalizeVietnamCoordinateInput(outlet.toaDoX, outlet.toaDoY);
+  if (!normalized.wasSwapped) return outlet;
+  return {
+    ...outlet,
+    toaDoX: normalized.x,
+    toaDoY: normalized.y,
+  };
+}
+
 function normalizeStartPoint(point: SaleStartPoint): SaleStartPoint {
   const normalized = normalizeVietnamCoordinateInput(point.toaDoX, point.toaDoY);
   if (!normalized.wasSwapped) return point;
@@ -242,7 +252,7 @@ export default function RouteMapPage() {
   const [mapStatus, setMapStatus] = useState("Đang tải bản đồ OpenStreetMap...");
 
   useEffect(() => {
-    const storedOutlets = loadOutlets();
+    const storedOutlets = loadOutlets().map(normalizeOutletCoordinates);
     const currentSales = new Set(storedOutlets.map((outlet) => outlet.salePhuTrach).filter(Boolean));
     const cleanedStartPoints = loadStartPoints()
       .map(normalizeStartPoint)

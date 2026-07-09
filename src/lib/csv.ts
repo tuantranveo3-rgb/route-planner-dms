@@ -152,6 +152,16 @@ function calculateDistanceToClusterCenter(toaDoX: number, toaDoY: number, cluste
   return roundDistance(Math.sqrt(dx * dx + dy * dy));
 }
 
+function isVietnamCoordinate(x: number, y: number) {
+  return x >= 102 && x <= 110 && y >= 8 && y <= 24;
+}
+
+function normalizeVietnamCoordinateInput(x: number, y: number) {
+  if (isVietnamCoordinate(x, y)) return { x, y };
+  if (isVietnamCoordinate(y, x)) return { x: y, y: x };
+  return { x, y };
+}
+
 const validFrequencies: Frequency[] = ["F8", "F4", "F2", "F1", "F0.5", "F0.3"];
 
 function parseFrequency(value: string | undefined): Frequency | undefined {
@@ -203,8 +213,11 @@ export function parseOutletCsv(csv: string, routeClusters: RouteCluster[] = defa
 
   const outlets: Outlet[] = result.data.map((row, index) => {
     const line = index + 2;
-    const toaDoX = parseCsvNumber(row.toaDoX);
-    const toaDoY = parseCsvNumber(row.toaDoY);
+    const rawToaDoX = parseCsvNumber(row.toaDoX);
+    const rawToaDoY = parseCsvNumber(row.toaDoY);
+    const normalizedCoordinates = normalizeVietnamCoordinateInput(rawToaDoX, rawToaDoY);
+    const toaDoX = normalizedCoordinates.x;
+    const toaDoY = normalizedCoordinates.y;
     const importedDistance = hasDistanceColumn && row.khoangCachTamCumKm?.trim() ? parseCsvNumber(row.khoangCachTamCumKm) : Number.NaN;
     const rawFrequency = row.ghiNhanF || row.F || row.tanSuat;
     const ghiNhanF = parseFrequency(rawFrequency);
