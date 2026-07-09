@@ -330,7 +330,7 @@ export default function RouteMapPage() {
   const lineGroups = new Map<string, string>();
 
   for (const item of points) {
-    const key = `${item.visit.plannedDate}-${item.visit.outlet.salePhuTrach}`;
+    const key = `${item.visit.plannedDate}-${item.visit.outlet.salePhuTrach}-${item.visit.clusterId}`;
     const current = lineGroups.get(key) ?? (() => {
       const startPoint = dailyStartPointBySale.get(`${item.visit.plannedDate}-${item.visit.outlet.salePhuTrach}`) ?? defaultStartPointBySale.get(item.visit.outlet.salePhuTrach);
       return startPoint ? `${startPoint.x},${startPoint.y}` : "";
@@ -439,9 +439,15 @@ export default function RouteMapPage() {
         }
 
         const routeGroups = new Map<string, LeafletLatLng[]>();
-        const sortedPositions = visitPositions.sort((a, b) => a.visit.plannedDate.localeCompare(b.visit.plannedDate) || a.visit.outlet.salePhuTrach.localeCompare(b.visit.outlet.salePhuTrach) || a.visit.routeOrder - b.visit.routeOrder);
+        const sortedPositions = visitPositions.sort(
+          (a, b) =>
+            a.visit.plannedDate.localeCompare(b.visit.plannedDate) ||
+            a.visit.outlet.salePhuTrach.localeCompare(b.visit.outlet.salePhuTrach) ||
+            a.visit.clusterId.localeCompare(b.visit.clusterId) ||
+            a.visit.routeOrder - b.visit.routeOrder,
+        );
         for (const { visit, position } of sortedPositions) {
-          const key = `${visit.plannedDate}-${visit.outlet.salePhuTrach}`;
+          const key = `${visit.plannedDate}-${visit.outlet.salePhuTrach}-${visit.clusterId}`;
           if (!routeGroups.has(key)) {
             const start =
               startPositions.find((item) => item.start.salePhuTrach === visit.outlet.salePhuTrach && item.start.date === visit.plannedDate) ??
@@ -624,6 +630,11 @@ export default function RouteMapPage() {
           <div className="border-b border-line px-4 py-3">
             <div className="font-bold text-ink">{useStreetMap ? "OpenStreetMap tuyến bán hàng" : "Sơ đồ tuyến nội bộ"}</div>
             <div className="text-sm text-muted">{mapStatus}</div>
+            {cluster === "all" && new Set(rows.map((visit) => visit.clusterId)).size > 1 ? (
+              <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">
+                Đang xem nhiều cụm cùng lúc. App chỉ nối đường trong từng cụm nhỏ; chọn một cụm cụ thể để xem tuyến ngày rõ nhất.
+              </div>
+            ) : null}
           </div>
           <div className="bg-slate-50 p-4">
             {rows.length && !showInternalMap ? (

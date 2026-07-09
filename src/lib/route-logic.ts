@@ -538,7 +538,7 @@ function assignDailyOrders(visits: RouteVisit[], clusters: RouteCluster[], saleS
   const grouped = new Map<string, RouteVisit[]>();
 
   for (const visit of visits) {
-    const key = `${visit.plannedDate}-${visit.outlet.salePhuTrach}`;
+    const key = `${visit.plannedDate}-${visit.outlet.salePhuTrach}-${visit.clusterId}`;
     grouped.set(key, [...(grouped.get(key) ?? []), visit]);
   }
 

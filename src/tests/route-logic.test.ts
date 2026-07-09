@@ -139,6 +139,37 @@ describe("route logic", () => {
     expect(new Set(weekOneVisits.map((visit) => visit.dayName)).size).toBeGreaterThan(1);
   });
 
+  it("assigns daily route order within each small cluster instead of across the whole district", () => {
+    const outlets: Outlet[] = [
+      { ...strongOutlet, outletId: "CL-A-1", cumNho: "Q1-A", salePhuTrach: "Sale Cluster", ghiNhanF: "F4", toaDoX: 106.7001, toaDoY: 10.781 },
+      { ...strongOutlet, outletId: "CL-A-2", cumNho: "Q1-A", salePhuTrach: "Sale Cluster", ghiNhanF: "F4", toaDoX: 106.7005, toaDoY: 10.782 },
+      { ...strongOutlet, outletId: "CL-B-1", cumNho: "Q1-B", salePhuTrach: "Sale Cluster", ghiNhanF: "F4", toaDoX: 106.6901, toaDoY: 10.791 },
+      { ...strongOutlet, outletId: "CL-B-2", cumNho: "Q1-B", salePhuTrach: "Sale Cluster", ghiNhanF: "F4", toaDoX: 106.6905, toaDoY: 10.792 },
+    ];
+    const territories = [
+      {
+        salePhuTrach: "Sale Cluster",
+        khuVucPhuTrach: ["Quan 1"],
+        cumNhoPhuTrach: ["Q1-A", "Q1-B"],
+        saleBackup: "",
+        ngayDiUuTien: ["Thứ 2"],
+        lichTheoNgay: [{ dayName: "Thứ 2", clusterIds: ["Q1-A", "Q1-B"] }],
+        minVisitsPerDay: 1,
+        maxVisitsPerDay: 15,
+        ghiChu: "",
+      },
+    ];
+    const plan = generateMonthlyRoutePlan(7, 2026, outlets, clusters, undefined, [], [], territories);
+    const weekOne = plan.filter((visit) => visit.week === "W1" && visit.status !== "CS từ xa");
+    const ordersByCluster = new Map<string, number[]>();
+    for (const visit of weekOne) {
+      ordersByCluster.set(visit.clusterId, [...(ordersByCluster.get(visit.clusterId) ?? []), visit.routeOrder]);
+    }
+
+    expect(ordersByCluster.get("Q1-A")?.sort()).toEqual([1, 2]);
+    expect(ordersByCluster.get("Q1-B")?.sort()).toEqual([1, 2]);
+  });
+
   it("does not schedule visits on sale unavailable days", () => {
     const territory = {
       salePhuTrach: "Sale Off",
