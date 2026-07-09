@@ -165,9 +165,12 @@ describe("route logic", () => {
     for (const visit of weekOne) {
       ordersByCluster.set(visit.clusterId, [...(ordersByCluster.get(visit.clusterId) ?? []), visit.routeOrder]);
     }
+    const dayByCluster = new Map(weekOne.map((visit) => [visit.clusterId, visit.dayName]));
 
     expect(ordersByCluster.get("Q1-A")?.sort()).toEqual([1, 2]);
     expect(ordersByCluster.get("Q1-B")?.sort()).toEqual([1, 2]);
+    expect(dayByCluster.get("Q1-A")).toBe("Thứ 2");
+    expect(dayByCluster.get("Q1-B")).toBe("Thứ 3");
   });
 
   it("does not schedule visits on sale unavailable days", () => {

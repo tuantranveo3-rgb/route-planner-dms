@@ -41,6 +41,12 @@ const clamp = (value: number, min = 0, max = 100) => Math.min(max, Math.max(min,
 const round1 = (value: number) => Math.round(value * 10) / 10;
 const workingDayNames = dayNameByIndex.slice(1);
 
+function spreadClusterDayName(preferredDayName: string, sequence: number): string {
+  const startIndex = workingDayNames.indexOf(preferredDayName);
+  if (startIndex < 0) return preferredDayName;
+  return workingDayNames[(startIndex + sequence) % workingDayNames.length];
+}
+
 function distanceBetween(a: { toaDoX: number; toaDoY: number }, b: { toaDoX: number; toaDoY: number }) {
   return Math.hypot(a.toaDoX - b.toaDoX, a.toaDoY - b.toaDoY);
 }
@@ -186,7 +192,9 @@ export function generateMonthlyRoutePlan(
   const lowFrequencyCarryoverOutlets = new Set<string>();
   const scheduledDayBySaleCluster = new Map(
     salesTerritories.flatMap((territory) =>
-      (territory.lichTheoNgay ?? []).flatMap((dayPlan) => dayPlan.clusterIds.map((clusterId) => [`${territory.salePhuTrach}-${clusterId}`, dayPlan.dayName] as const)),
+      (territory.lichTheoNgay ?? []).flatMap((dayPlan) =>
+        dayPlan.clusterIds.map((clusterId, index) => [`${territory.salePhuTrach}-${clusterId}`, spreadClusterDayName(dayPlan.dayName, index)] as const),
+      ),
     ),
   );
   const territoryBySale = new Map(salesTerritories.map((territory) => [territory.salePhuTrach, territory]));
@@ -278,7 +286,7 @@ export function generateMonthlyRoutePlan(
       const bySaleWeek = new Map<string, RouteVisit[]>();
       for (const visit of visits) {
         if (visit.status === "CS từ xa") continue;
-        const key = `${visit.year}-${visit.month}-${visit.week}-${visit.outlet.salePhuTrach}`;
+        const key = `${visit.year}-${visit.month}-${visit.week}-${visit.outlet.salePhuTrach}-${visit.clusterId}`;
         bySaleWeek.set(key, [...(bySaleWeek.get(key) ?? []), visit]);
       }
 

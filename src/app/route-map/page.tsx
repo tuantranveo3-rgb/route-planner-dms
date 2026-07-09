@@ -309,6 +309,9 @@ export default function RouteMapPage() {
     .filter((visit) => cluster === "all" || visit.clusterId === cluster)
     .filter((visit) => frequency === "all" || visit.frequency === frequency)
     .sort((a, b) => a.plannedDate.localeCompare(b.plannedDate) || a.outlet.salePhuTrach.localeCompare(b.outlet.salePhuTrach) || a.routeOrder - b.routeOrder);
+  const visibleClusterIds = Array.from(new Set(rows.map((visit) => visit.clusterId)));
+  const isMultiClusterOverview = cluster === "all" && visibleClusterIds.length > 1;
+  const shouldDrawRouteLines = !isMultiClusterOverview;
   const dailyStartBySale = new Map(currentStartPoints.filter((point) => point.date).map((point) => [`${point.date}-${point.salePhuTrach}`, point]));
   const defaultStartBySale = new Map(currentStartPoints.filter((point) => !point.date).map((point) => [point.salePhuTrach, point]));
   const visibleStartPoints = Array.from(
@@ -329,13 +332,15 @@ export default function RouteMapPage() {
   const defaultStartPointBySale = new Map(startMarkers.filter((marker) => !marker.start.date).map((marker) => [marker.start.salePhuTrach, marker.point]));
   const lineGroups = new Map<string, string>();
 
-  for (const item of points) {
-    const key = `${item.visit.plannedDate}-${item.visit.outlet.salePhuTrach}-${item.visit.clusterId}`;
-    const current = lineGroups.get(key) ?? (() => {
-      const startPoint = dailyStartPointBySale.get(`${item.visit.plannedDate}-${item.visit.outlet.salePhuTrach}`) ?? defaultStartPointBySale.get(item.visit.outlet.salePhuTrach);
-      return startPoint ? `${startPoint.x},${startPoint.y}` : "";
-    })();
-    lineGroups.set(key, `${current ? `${current} ` : ""}${item.point.x},${item.point.y}`);
+  if (shouldDrawRouteLines) {
+    for (const item of points) {
+      const key = `${item.visit.plannedDate}-${item.visit.outlet.salePhuTrach}-${item.visit.clusterId}`;
+      const current = lineGroups.get(key) ?? (() => {
+        const startPoint = dailyStartPointBySale.get(`${item.visit.plannedDate}-${item.visit.outlet.salePhuTrach}`) ?? defaultStartPointBySale.get(item.visit.outlet.salePhuTrach);
+        return startPoint ? `${startPoint.x},${startPoint.y}` : "";
+      })();
+      lineGroups.set(key, `${current ? `${current} ` : ""}${item.point.x},${item.point.y}`);
+    }
   }
 
   const selectedSaleText = sale === "all" ? "tất cả sale" : sale;
@@ -438,28 +443,30 @@ export default function RouteMapPage() {
           leafletLayersRef.current.push(marker);
         }
 
-        const routeGroups = new Map<string, LeafletLatLng[]>();
-        const sortedPositions = visitPositions.sort(
-          (a, b) =>
-            a.visit.plannedDate.localeCompare(b.visit.plannedDate) ||
-            a.visit.outlet.salePhuTrach.localeCompare(b.visit.outlet.salePhuTrach) ||
-            a.visit.clusterId.localeCompare(b.visit.clusterId) ||
-            a.visit.routeOrder - b.visit.routeOrder,
-        );
-        for (const { visit, position } of sortedPositions) {
-          const key = `${visit.plannedDate}-${visit.outlet.salePhuTrach}-${visit.clusterId}`;
-          if (!routeGroups.has(key)) {
-            const start =
-              startPositions.find((item) => item.start.salePhuTrach === visit.outlet.salePhuTrach && item.start.date === visit.plannedDate) ??
-              startPositions.find((item) => item.start.salePhuTrach === visit.outlet.salePhuTrach && !item.start.date);
-            routeGroups.set(key, start ? [start.position] : []);
+        if (shouldDrawRouteLines) {
+          const routeGroups = new Map<string, LeafletLatLng[]>();
+          const sortedPositions = visitPositions.sort(
+            (a, b) =>
+              a.visit.plannedDate.localeCompare(b.visit.plannedDate) ||
+              a.visit.outlet.salePhuTrach.localeCompare(b.visit.outlet.salePhuTrach) ||
+              a.visit.clusterId.localeCompare(b.visit.clusterId) ||
+              a.visit.routeOrder - b.visit.routeOrder,
+          );
+          for (const { visit, position } of sortedPositions) {
+            const key = `${visit.plannedDate}-${visit.outlet.salePhuTrach}-${visit.clusterId}`;
+            if (!routeGroups.has(key)) {
+              const start =
+                startPositions.find((item) => item.start.salePhuTrach === visit.outlet.salePhuTrach && item.start.date === visit.plannedDate) ??
+                startPositions.find((item) => item.start.salePhuTrach === visit.outlet.salePhuTrach && !item.start.date);
+              routeGroups.set(key, start ? [start.position] : []);
+            }
+            routeGroups.get(key)?.push(position);
           }
-          routeGroups.get(key)?.push(position);
-        }
 
-        for (const path of routeGroups.values()) {
-          if (path.length < 2) continue;
-          leafletLayersRef.current.push(leaflet.polyline(path, { color: "#0f172a", opacity: 0.55, weight: 3 }).addTo(map));
+          for (const path of routeGroups.values()) {
+            if (path.length < 2) continue;
+            leafletLayersRef.current.push(leaflet.polyline(path, { color: "#0f172a", opacity: 0.55, weight: 3 }).addTo(map));
+          }
         }
 
         const allPositions = [...visitPositions.map((item) => item.position), ...startPositions.map((item) => item.position)];
@@ -482,7 +489,7 @@ export default function RouteMapPage() {
     return () => {
       cancelled = true;
     };
-  }, [rows, validVisibleStartPoints]);
+  }, [rows, shouldDrawRouteLines, validVisibleStartPoints]);
 
   function saveSelectedStartPoint() {
     const x = Number(startX);
@@ -520,7 +527,7 @@ export default function RouteMapPage() {
 
       <div className="mb-4 grid gap-4 md:grid-cols-3">
         <MetricCard label="Điểm trên bản đồ" value={rows.length} hint={`${selectedSaleText} · ${selectedDateText}`} />
-        <MetricCard label="Cụm đang hiển thị" value={new Set(rows.map((visit) => visit.clusterId)).size} hint="Gom theo cụm nhỏ, không theo quận lớn" />
+        <MetricCard label="Cụm đang hiển thị" value={visibleClusterIds.length} hint="Gom theo cụm nhỏ, không theo quận lớn" />
         <MetricCard label="Tổng khoảng cách tâm cụm" value={`${Math.round(totalDistance)} km`} hint="Ước tính từ dữ liệu mẫu/import" />
       </div>
 
@@ -630,9 +637,9 @@ export default function RouteMapPage() {
           <div className="border-b border-line px-4 py-3">
             <div className="font-bold text-ink">{useStreetMap ? "OpenStreetMap tuyến bán hàng" : "Sơ đồ tuyến nội bộ"}</div>
             <div className="text-sm text-muted">{mapStatus}</div>
-            {cluster === "all" && new Set(rows.map((visit) => visit.clusterId)).size > 1 ? (
+            {isMultiClusterOverview ? (
               <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">
-                Đang xem nhiều cụm cùng lúc. App chỉ nối đường trong từng cụm nhỏ; chọn một cụm cụ thể để xem tuyến ngày rõ nhất.
+                Đang xem nhiều cụm cùng lúc. App đang ẩn đường nối để tránh hiểu nhầm là một tuyến; chọn một cụm cụ thể để xem thứ tự đi trong ngày rõ nhất.
               </div>
             ) : null}
           </div>
