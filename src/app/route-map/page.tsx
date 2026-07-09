@@ -182,6 +182,15 @@ function formatDateValue(dateValue: string) {
   return new Intl.DateTimeFormat("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" }).format(date);
 }
 
+function getDayNameFromDate(dateValue: string) {
+  const date = new Date(`${dateValue}T00:00:00`);
+  return ["Chủ nhật", "Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7"][date.getDay()];
+}
+
+function formatDateWithDay(dateValue: string) {
+  return `${getDayNameFromDate(dateValue)}, ${formatDateValue(dateValue)}`;
+}
+
 function formatStartScope(point: SaleStartPoint) {
   return point.date ? `${formatDateValue(point.date)} · ${point.salePhuTrach}` : point.salePhuTrach;
 }
@@ -311,7 +320,9 @@ export default function RouteMapPage() {
     .sort((a, b) => a.plannedDate.localeCompare(b.plannedDate) || a.outlet.salePhuTrach.localeCompare(b.outlet.salePhuTrach) || a.routeOrder - b.routeOrder);
   const visibleClusterIds = Array.from(new Set(rows.map((visit) => visit.clusterId)));
   const isMultiClusterOverview = cluster === "all" && visibleClusterIds.length > 1;
-  const shouldDrawRouteLines = cluster !== "all";
+  const isOverviewMode = sale === "all" || cluster === "all";
+  const shouldDrawRouteLines = !isOverviewMode;
+  const mapMarkerNumberByVisitId = useMemo(() => new Map(rows.map((visit, index) => [visit.id, index + 1])), [rows]);
   const dailyStartBySale = new Map(currentStartPoints.filter((point) => point.date).map((point) => [`${point.date}-${point.salePhuTrach}`, point]));
   const defaultStartBySale = new Map(currentStartPoints.filter((point) => !point.date).map((point) => [point.salePhuTrach, point]));
   const visibleStartPoints = Array.from(
@@ -344,7 +355,7 @@ export default function RouteMapPage() {
   }
 
   const selectedSaleText = sale === "all" ? "tất cả sale" : sale;
-  const selectedDateText = date === "all" ? "tất cả ngày" : formatDateValue(date);
+  const selectedDateText = date === "all" ? "tất cả ngày" : formatDateWithDay(date);
   const totalDistance = rows.reduce((sum, visit) => sum + visit.outlet.khoangCachTamCumKm, 0);
   const showInternalMap = !useStreetMap || mapStatus.includes("sơ đồ nội bộ");
   const missingValidStartPoint = rows.length > 0 && useStreetMap && visibleStartPoints.length > 0 && startPointsForDisplay.length === 0;
@@ -428,16 +439,17 @@ export default function RouteMapPage() {
         }
 
         for (const { visit, position } of visitPositions) {
+          const displayOrder = isOverviewMode ? (mapMarkerNumberByVisitId.get(visit.id) ?? visit.routeOrder) : visit.routeOrder;
           const icon = leaflet.divIcon({
             className: "route-map-outlet-marker",
-            html: markerHtml(String(visit.routeOrder), frequencyColors[visit.frequency]),
+            html: markerHtml(String(displayOrder), frequencyColors[visit.frequency]),
             iconSize: [28, 28],
             iconAnchor: [14, 14],
           });
-          const marker = leaflet.marker(position, { icon, title: `${visit.routeOrder}. ${visit.outlet.tenDiemBan}` });
+          const marker = leaflet.marker(position, { icon, title: `${displayOrder}. ${visit.outlet.tenDiemBan}` });
           marker
             .bindPopup(
-              `<strong>${visit.routeOrder}. ${escapeHtml(visit.outlet.tenDiemBan)}</strong><br/>${escapeHtml(visit.outlet.salePhuTrach)} · ${escapeHtml(visit.clusterId)} · ${escapeHtml(visit.frequency)}<br/>${escapeHtml(visit.outlet.diaChi)}<br/>X/Y: ${visit.outlet.toaDoX}, ${visit.outlet.toaDoY}`,
+              `<strong>${displayOrder}. ${escapeHtml(visit.outlet.tenDiemBan)}</strong><br/>${escapeHtml(visit.outlet.salePhuTrach)} · ${escapeHtml(visit.clusterId)} · ${escapeHtml(visit.frequency)}<br/>Thứ tự trong cụm: #${visit.routeOrder}<br/>${escapeHtml(visit.outlet.diaChi)}<br/>X/Y: ${visit.outlet.toaDoX}, ${visit.outlet.toaDoY}`,
             )
             .addTo(map);
           leafletLayersRef.current.push(marker);
@@ -489,7 +501,7 @@ export default function RouteMapPage() {
     return () => {
       cancelled = true;
     };
-  }, [rows, shouldDrawRouteLines, validVisibleStartPoints]);
+  }, [isOverviewMode, mapMarkerNumberByVisitId, rows, shouldDrawRouteLines, validVisibleStartPoints]);
 
   function saveSelectedStartPoint() {
     const x = Number(startX);
@@ -542,7 +554,14 @@ export default function RouteMapPage() {
             <option value="date">Riêng cho ngày</option>
           </select>
           <input className="h-10 rounded-md border border-line px-3 text-sm disabled:bg-slate-100" type="date" value={startDate} disabled={startScope === "default"} onChange={(event) => setStartDate(event.target.value)} />
-          <select className="h-10 rounded-md border border-line px-3 text-sm" value={editingSale} onChange={(event) => setEditingSale(event.target.value)}>
+          <select
+            className="h-10 rounded-md border border-line px-3 text-sm"
+            value={editingSale}
+            onChange={(event) => {
+              setEditingSale(event.target.value);
+              setSale(event.target.value);
+            }}
+          >
             {saleOptions.map((owner) => (
               <option key={owner} value={owner}>
                 {owner}
@@ -571,6 +590,7 @@ export default function RouteMapPage() {
               className={`rounded-full border px-3 py-1 text-xs font-semibold ${editingSale === point.salePhuTrach ? "border-ink bg-ink text-white" : "border-line bg-slate-50 text-slate-700"}`}
               onClick={() => {
                 setEditingSale(point.salePhuTrach);
+                setSale(point.salePhuTrach);
                 setStartScope(point.date ? "date" : "default");
                 setStartDate(point.date ?? "");
               }}
@@ -593,7 +613,7 @@ export default function RouteMapPage() {
           <option value="all">Tất cả ngày</option>
           {dateOptions.map((item) => (
             <option key={item} value={item}>
-              {formatDateValue(item)}
+              {formatDateWithDay(item)}
               {routeDateSet.has(item) ? "" : " - không có tuyến"}
             </option>
           ))}
@@ -669,16 +689,19 @@ export default function RouteMapPage() {
                     <title>{`${start.tenDiemXuatPhat} · ${start.loaiDiem} · ${formatStartScope(start)}`}</title>
                   </g>
                 ))}
-                {points.map(({ visit, point }) => (
+                {points.map(({ visit, point }) => {
+                  const displayOrder = isOverviewMode ? (mapMarkerNumberByVisitId.get(visit.id) ?? visit.routeOrder) : visit.routeOrder;
+                  return (
                   <g key={visit.id}>
                     <circle cx={point.x} cy={point.y} r="13" fill={frequencyColors[visit.frequency]} opacity="0.18" />
                     <circle cx={point.x} cy={point.y} r="8" fill={frequencyColors[visit.frequency]} stroke="#ffffff" strokeWidth="2" />
                     <text x={point.x} y={point.y - 16} textAnchor="middle" className="fill-slate-900 text-[11px] font-bold">
-                      {visit.routeOrder}
+                      {displayOrder}
                     </text>
                     <title>{`${visit.routeOrder}. ${visit.outlet.tenDiemBan} · ${visit.outlet.salePhuTrach} · ${visit.clusterId} · ${visit.frequency}`}</title>
                   </g>
-                ))}
+                  );
+                })}
               </svg>
             ) : (
               <div className="flex h-96 items-center justify-center rounded-md bg-white text-sm text-muted">Không có điểm phù hợp với bộ lọc hiện tại.</div>
@@ -709,10 +732,12 @@ export default function RouteMapPage() {
                 Chưa có #0 hợp lệ cho bộ lọc hiện tại. Hãy nhập tọa độ xuất phát thật, ví dụ toaDoX=106.x và toaDoY=10.x, rồi bấm Lưu START.
               </div>
             ) : null}
-            {rows.slice(0, 80).map((visit) => (
+            {rows.slice(0, 80).map((visit) => {
+              const displayOrder = isOverviewMode ? (mapMarkerNumberByVisitId.get(visit.id) ?? visit.routeOrder) : visit.routeOrder;
+              return (
               <div key={visit.id} className="rounded-md bg-slate-50 p-3 text-sm">
                 <div className="mb-1 flex items-center justify-between gap-2">
-                  <span className="font-black text-ink">#{visit.routeOrder}</span>
+                  <span className="font-black text-ink">#{displayOrder}</span>
                   <FrequencyBadge frequency={visit.frequency} />
                 </div>
                 <div className="font-bold text-ink">{visit.outlet.tenDiemBan}</div>
@@ -723,7 +748,8 @@ export default function RouteMapPage() {
                   X/Y: {visit.outlet.toaDoX}, {visit.outlet.toaDoY}
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>
