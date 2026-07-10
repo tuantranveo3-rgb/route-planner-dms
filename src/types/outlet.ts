@@ -20,6 +20,7 @@ export interface Outlet {
   toaDoX: number;
   toaDoY: number;
   ghiNhanF?: Frequency;
+  kyImport?: string;
   ghiChu: string;
 }
 

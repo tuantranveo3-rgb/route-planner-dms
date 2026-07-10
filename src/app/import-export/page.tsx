@@ -6,23 +6,29 @@ import { FrequencyBadge } from "@/components/FrequencyBadge";
 import { PageHeader } from "@/components/PageHeader";
 import { canEdit, loadCurrentAccount, type AppRole } from "@/lib/auth";
 import { buildImportedClusters, downloadCsv, executionHistoryToCsv, parseExecutionHistoryCsv, parseOutletCsv, plannerToCsv } from "@/lib/csv";
-import { loadClusters, saveClusters } from "@/lib/cluster-storage";
-import { loadOutlets, saveOutlets } from "@/lib/outlet-storage";
+import { loadClusters, resetClusters, saveClusters } from "@/lib/cluster-storage";
+import { clearImportedOutlets, loadOutletImportMeta, loadOutlets, saveOutletImportMeta, saveOutlets } from "@/lib/outlet-storage";
 import { EXECUTION_STORAGE_KEY } from "@/lib/route-execution";
 import { enrichOutlets, generateMonthlyRoutePlan } from "@/lib/route-logic";
 import { sampleExecutionHistoryCsv, sampleOutletsCsv } from "@/lib/sample-csv";
-import { clusters, saleStartPoints, seedOutlets } from "@/lib/seed-data";
+import { clusters, saleStartPoints, salesTerritories, seedOutlets } from "@/lib/seed-data";
 import { loadSalesConfig, saveSalesConfig, syncSalesConfigWithOutlets } from "@/lib/sales-config";
 import type { EnrichedOutlet } from "@/types/outlet";
 import type { RouteCluster } from "@/types/cluster";
 import type { RouteExecutionRecord } from "@/types/route";
 import type { SalesTerritory } from "@/types/territory";
 
+function getDefaultImportPeriod(date = new Date()) {
+  return `Q${Math.floor(date.getMonth() / 3) + 1}-${date.getFullYear()}`;
+}
+
 export default function ImportExportPage() {
   const [message, setMessage] = useState("Chưa import file nào. Bảng dưới đang dùng dữ liệu seed.");
   const [historyMessage, setHistoryMessage] = useState("Chưa import lịch sử thực hiện. Planner sẽ dùng lịch sử đang lưu trên trình duyệt nếu có.");
   const [historyCount, setHistoryCount] = useState(0);
   const [outlets, setOutlets] = useState(seedOutlets);
+  const [importPeriod, setImportPeriod] = useState(getDefaultImportPeriod());
+  const [lastImportPeriod, setLastImportPeriod] = useState("");
   const [routeClusters, setRouteClusters] = useState<RouteCluster[]>(clusters);
   const [salesConfig, setSalesConfig] = useState<SalesTerritory[]>([]);
   const [role, setRole] = useState<AppRole>("boss");
@@ -34,6 +40,11 @@ export default function ImportExportPage() {
     setOutlets(loadOutlets());
     setRouteClusters(loadClusters());
     setSalesConfig(loadSalesConfig());
+    const meta = loadOutletImportMeta();
+    if (meta) {
+      setLastImportPeriod(`${meta.period} - ${meta.count} điểm - ${new Date(meta.importedAt).toLocaleString("vi-VN")}`);
+      setImportPeriod(meta.period);
+    }
     setRole(loadCurrentAccount().role);
     const listener = () => setRole(loadCurrentAccount().role);
     window.addEventListener("route-planner-account-change", listener);
@@ -46,6 +57,7 @@ export default function ImportExportPage() {
     { key: "id", header: "Outlet", cell: (row) => <div><div className="font-bold">{row.outletId}</div><div className="text-xs text-muted">{row.tenDiemBan}</div></div> },
     { key: "area", header: "Cụm nhỏ", cell: (row) => <div>{row.cumNho}<div className="text-xs text-muted">{row.phuongXa}</div></div> },
     { key: "sale", header: "Sale", cell: (row) => row.salePhuTrach },
+    { key: "kyImport", header: "Kỳ import", cell: (row) => row.kyImport || "Seed/demo" },
     { key: "score", header: "Tổng điểm", cell: (row) => row.totalScore },
     { key: "f", header: "F", cell: (row) => <FrequencyBadge frequency={row.frequency} /> },
   ];
@@ -63,23 +75,44 @@ export default function ImportExportPage() {
         return;
       }
 
-      setOutlets(parsed.outlets);
-      saveOutlets(parsed.outlets);
+      const period = importPeriod.trim() || getDefaultImportPeriod();
+      const importedOutlets = parsed.outlets.map((outlet) => ({ ...outlet, kyImport: period }));
 
-      const nextClusters = buildImportedClusters(parsed.outlets, routeClusters);
+      setOutlets(importedOutlets);
+      saveOutlets(importedOutlets);
+      saveOutletImportMeta({ period, importedAt: new Date().toISOString(), count: importedOutlets.length });
+      setLastImportPeriod(`${period} - ${importedOutlets.length} điểm - vừa import`);
+
+      const nextClusters = buildImportedClusters(importedOutlets, routeClusters);
       setRouteClusters(nextClusters);
       saveClusters(nextClusters);
 
-      const nextSalesConfig = syncSalesConfigWithOutlets(loadSalesConfig(), parsed.outlets, nextClusters);
+      const nextSalesConfig = syncSalesConfigWithOutlets(loadSalesConfig(), importedOutlets, nextClusters);
       setSalesConfig(nextSalesConfig);
       saveSalesConfig(nextSalesConfig);
 
-      const importedSales = new Set(parsed.outlets.map((outlet) => outlet.salePhuTrach).filter(Boolean));
-      const importedClusters = new Set(parsed.outlets.map((outlet) => outlet.cumNho).filter(Boolean));
+      const importedSales = new Set(importedOutlets.map((outlet) => outlet.salePhuTrach).filter(Boolean));
+      const importedClusters = new Set(importedOutlets.map((outlet) => outlet.cumNho).filter(Boolean));
       setMessage(
-        `Import thành công ${parsed.outlets.length} điểm bán, ghi nhận ${importedSales.size} sale và ${importedClusters.size} cụm. Phân vùng sale đã tự đồng bộ theo sale/quận/cụm trong file import; Planner sẽ dùng dữ liệu mới này.`,
+        `Import thành công ${importedOutlets.length} điểm bán cho kỳ ${period}, ghi nhận ${importedSales.size} sale và ${importedClusters.size} cụm. Dữ liệu điểm bán cũ đã được thay bằng file mới; Planner sẽ dùng dữ liệu mới này.`,
       );
     });
+  }
+
+  function clearOutletImportHistory() {
+    if (!editable) {
+      setMessage("Account Người xem không được xóa dữ liệu import.");
+      return;
+    }
+    clearImportedOutlets();
+    resetClusters();
+    saveSalesConfig(salesTerritories);
+    setOutlets(seedOutlets);
+    setRouteClusters(clusters);
+    setSalesConfig(salesTerritories);
+    setLastImportPeriod("");
+    setImportPeriod(getDefaultImportPeriod());
+    setMessage("Đã xóa dữ liệu điểm bán import và đưa cụm/sale về dữ liệu mẫu. Anh có thể import file mới theo quý mà không bị trộn file cũ.");
   }
 
   function getStoredExecutionRecords() {
@@ -139,10 +172,36 @@ export default function ImportExportPage() {
         title="Import/Export CSV"
         description="Import danh sách điểm bán CSV. Nếu file có cột ghiNhanF thì Planner dùng F anh nhập để phân tuyến; nếu thiếu ghiNhanF thì app mới tự tính F theo điểm."
       />
-      <div className="mb-4 grid gap-4 rounded-lg border border-line bg-white p-4 shadow-soft md:grid-cols-3">
+      <div className="mb-4 flex flex-col gap-3 rounded-lg border border-line bg-white p-4 shadow-soft md:flex-row md:items-center md:justify-between">
+        <div className="text-sm text-muted">
+          {lastImportPeriod ? (
+            <>Import điểm bán gần nhất: <span className="font-bold text-ink">{lastImportPeriod}</span></>
+          ) : (
+            "Chưa có metadata import điểm bán. Đang dùng seed hoặc dữ liệu cũ chưa gắn quý."
+          )}
+        </div>
+        <button
+          className="h-10 rounded-md border border-red-200 bg-red-50 px-4 text-sm font-bold text-red-700 disabled:opacity-50"
+          disabled={!editable}
+          onClick={clearOutletImportHistory}
+        >
+          Xóa dữ liệu import điểm bán
+        </button>
+      </div>
+      <div className="mb-4 grid gap-4 rounded-lg border border-line bg-white p-4 shadow-soft md:grid-cols-5">
         <label className="block">
           <span className="mb-2 block text-sm font-bold">Import CSV điểm bán</span>
           <input className="block w-full text-sm disabled:opacity-50" disabled={!editable} type="file" accept=".csv" onChange={(event) => onFileChange(event.target.files?.[0])} />
+        </label>
+        <label className="block">
+          <span className="mb-2 block text-sm font-bold">Kỳ import/Quý</span>
+          <input
+            className="h-10 w-full rounded-md border border-line px-3 text-sm disabled:opacity-50"
+            disabled={!editable}
+            value={importPeriod}
+            onChange={(event) => setImportPeriod(event.target.value)}
+            placeholder="VD: Q3-2026"
+          />
         </label>
         <button
           className="h-10 rounded-md border border-line bg-white px-4 text-sm font-bold text-ink"

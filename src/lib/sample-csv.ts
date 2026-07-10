@@ -19,6 +19,7 @@ const sampleRows = [
     toaDoX: 10.2,
     toaDoY: 10.8,
     ghiNhanF: "F4",
+    kyImport: "Q3-2026",
     ghiChu: "Khách trọng điểm",
   },
   {
@@ -39,6 +40,7 @@ const sampleRows = [
     toaDoX: 14.5,
     toaDoY: 12.4,
     ghiNhanF: "F2",
+    kyImport: "Q3-2026",
     ghiChu: "Khách tăng trưởng",
   },
   {
@@ -59,6 +61,7 @@ const sampleRows = [
     toaDoX: 18.8,
     toaDoY: 13.5,
     ghiNhanF: "F1",
+    kyImport: "Q3-2026",
     ghiChu: "Khách duy trì",
   },
   {
@@ -79,6 +82,7 @@ const sampleRows = [
     toaDoX: 41.2,
     toaDoY: 19.4,
     ghiNhanF: "F0.5",
+    kyImport: "Q3-2026",
     ghiChu: "CS từ xa nếu hết capacity",
   },
 ];

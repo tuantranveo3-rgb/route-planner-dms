@@ -60,6 +60,7 @@ const outletHeaderAliases: Partial<Record<keyof Outlet, string[]>> = {
   toaDoX: ["toaDoX", "toa do x", "kinh do", "longitude", "lng", "long"],
   toaDoY: ["toaDoY", "toa do y", "vi do", "latitude", "lat"],
   ghiNhanF: ["ghiNhanF", "ghi nhan f", "f", "tan suat", "frequency"],
+  kyImport: ["kyImport", "ky import", "quy import", "quy", "import quarter", "import period"],
   ghiChu: ["ghiChu", "ghi chu", "note", "notes"],
 };
 
@@ -250,6 +251,7 @@ export function parseOutletCsv(csv: string, routeClusters: RouteCluster[] = defa
       toaDoX,
       toaDoY,
       ghiNhanF,
+      kyImport: row.kyImport,
       ghiChu: row.ghiChu,
     };
   });
