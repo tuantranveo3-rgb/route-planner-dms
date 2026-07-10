@@ -139,7 +139,7 @@ describe("route logic", () => {
     expect(plan.some((visit) => visit.status.startsWith("CS") && visit.warning?.includes("max"))).toBe(true);
   });
 
-  it("assigns daily route order within each small cluster instead of across the whole district", () => {
+  it("assigns a unique daily route order for each sale day while keeping cluster assignment", () => {
     const outlets: Outlet[] = [
       { ...strongOutlet, outletId: "CL-A-1", cumNho: "Q1-A", salePhuTrach: "Sale Cluster", ghiNhanF: "F4", toaDoX: 106.7001, toaDoY: 10.781 },
       { ...strongOutlet, outletId: "CL-A-2", cumNho: "Q1-A", salePhuTrach: "Sale Cluster", ghiNhanF: "F4", toaDoX: 106.7005, toaDoY: 10.782 },
@@ -161,14 +161,12 @@ describe("route logic", () => {
     ];
     const plan = generateMonthlyRoutePlan(7, 2026, outlets, clusters, undefined, [], [], territories);
     const weekOne = plan.filter((visit) => visit.week === "W1" && !visit.status.startsWith("CS"));
-    const ordersByCluster = new Map<string, number[]>();
-    for (const visit of weekOne) {
-      ordersByCluster.set(visit.clusterId, [...(ordersByCluster.get(visit.clusterId) ?? []), visit.routeOrder]);
-    }
+    const orders = weekOne.map((visit) => visit.routeOrder).sort((a, b) => a - b);
+    const clusterIds = new Set(weekOne.map((visit) => visit.clusterId));
     const dayByCluster = new Map(weekOne.map((visit) => [visit.clusterId, visit.dayName]));
 
-    expect(ordersByCluster.get("Q1-A")?.sort()).toEqual([1, 2]);
-    expect(ordersByCluster.get("Q1-B")?.sort()).toEqual([1, 2]);
+    expect(orders).toEqual([1, 2, 3, 4]);
+    expect(clusterIds).toEqual(new Set(["Q1-A", "Q1-B"]));
     expect(dayByCluster.get("Q1-A")).toBe("Thứ 2");
     expect(dayByCluster.get("Q1-B")).toBe("Thứ 2");
   });

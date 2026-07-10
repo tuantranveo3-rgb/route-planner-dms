@@ -320,8 +320,9 @@ export default function RouteMapPage() {
     .sort((a, b) => a.plannedDate.localeCompare(b.plannedDate) || a.outlet.salePhuTrach.localeCompare(b.outlet.salePhuTrach) || a.routeOrder - b.routeOrder);
   const visibleClusterIds = Array.from(new Set(rows.map((visit) => visit.clusterId)));
   const isMultiClusterOverview = cluster === "all" && visibleClusterIds.length > 1;
-  const isOverviewMode = sale === "all" || cluster === "all";
-  const shouldDrawRouteLines = !isOverviewMode;
+  const isSingleSaleDay = sale !== "all" && date !== "all";
+  const isOverviewMode = !isSingleSaleDay && (sale === "all" || cluster === "all");
+  const shouldDrawRouteLines = isSingleSaleDay || !isOverviewMode;
   const mapMarkerNumberByVisitId = useMemo(() => new Map(rows.map((visit, index) => [visit.id, index + 1])), [rows]);
   const dailyStartBySale = new Map(currentStartPoints.filter((point) => point.date).map((point) => [`${point.date}-${point.salePhuTrach}`, point]));
   const defaultStartBySale = new Map(currentStartPoints.filter((point) => !point.date).map((point) => [point.salePhuTrach, point]));
@@ -345,7 +346,7 @@ export default function RouteMapPage() {
 
   if (shouldDrawRouteLines) {
     for (const item of points) {
-      const key = `${item.visit.plannedDate}-${item.visit.outlet.salePhuTrach}-${item.visit.clusterId}`;
+      const key = isSingleSaleDay ? `${item.visit.plannedDate}-${item.visit.outlet.salePhuTrach}` : `${item.visit.plannedDate}-${item.visit.outlet.salePhuTrach}-${item.visit.clusterId}`;
       const current = lineGroups.get(key) ?? (() => {
         const startPoint = dailyStartPointBySale.get(`${item.visit.plannedDate}-${item.visit.outlet.salePhuTrach}`) ?? defaultStartPointBySale.get(item.visit.outlet.salePhuTrach);
         return startPoint ? `${startPoint.x},${startPoint.y}` : "";
@@ -461,11 +462,10 @@ export default function RouteMapPage() {
             (a, b) =>
               a.visit.plannedDate.localeCompare(b.visit.plannedDate) ||
               a.visit.outlet.salePhuTrach.localeCompare(b.visit.outlet.salePhuTrach) ||
-              a.visit.clusterId.localeCompare(b.visit.clusterId) ||
               a.visit.routeOrder - b.visit.routeOrder,
           );
           for (const { visit, position } of sortedPositions) {
-            const key = `${visit.plannedDate}-${visit.outlet.salePhuTrach}-${visit.clusterId}`;
+            const key = isSingleSaleDay ? `${visit.plannedDate}-${visit.outlet.salePhuTrach}` : `${visit.plannedDate}-${visit.outlet.salePhuTrach}-${visit.clusterId}`;
             if (!routeGroups.has(key)) {
               const start =
                 startPositions.find((item) => item.start.salePhuTrach === visit.outlet.salePhuTrach && item.start.date === visit.plannedDate) ??
@@ -501,7 +501,7 @@ export default function RouteMapPage() {
     return () => {
       cancelled = true;
     };
-  }, [isOverviewMode, mapMarkerNumberByVisitId, rows, shouldDrawRouteLines, validVisibleStartPoints]);
+  }, [isOverviewMode, isSingleSaleDay, mapMarkerNumberByVisitId, rows, shouldDrawRouteLines, validVisibleStartPoints]);
 
   function saveSelectedStartPoint() {
     const x = Number(startX);
@@ -657,7 +657,7 @@ export default function RouteMapPage() {
           <div className="border-b border-line px-4 py-3">
             <div className="font-bold text-ink">{useStreetMap ? "OpenStreetMap tuyến bán hàng" : "Sơ đồ tuyến nội bộ"}</div>
             <div className="text-sm text-muted">{mapStatus}</div>
-            {cluster === "all" && rows.length > 0 ? (
+            {cluster === "all" && rows.length > 0 && !isSingleSaleDay ? (
               <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">
                 Đang xem {isMultiClusterOverview ? "nhiều cụm" : "tổng quan"} cùng lúc. App đang ẩn đường nối để tránh hiểu nhầm là một tuyến; chọn một cụm cụ thể để xem thứ tự đi trong ngày rõ nhất.
               </div>

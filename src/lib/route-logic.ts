@@ -571,7 +571,9 @@ function getClusterCenter(group: RouteVisit[], cluster?: RouteCluster) {
 }
 
 function orderSaleDayRoute(group: RouteVisit[], clusterById: Map<string, RouteCluster>, startPoint?: SaleStartPoint): RouteVisit[] {
-  const routeStart = startPoint ?? getClusterCenter(group, clusterById.get(group[0].clusterId));
+  const clusterIds = new Set(group.map((visit) => visit.clusterId));
+  const cluster = clusterIds.size === 1 ? clusterById.get(group[0].clusterId) : undefined;
+  const routeStart = startPoint ?? getClusterCenter(group, cluster);
   return orderVisitsFromStart(group, routeStart);
 }
 
@@ -582,7 +584,7 @@ function assignDailyOrders(visits: RouteVisit[], clusters: RouteCluster[], saleS
   const grouped = new Map<string, RouteVisit[]>();
 
   for (const visit of visits) {
-    const key = `${visit.plannedDate}-${visit.outlet.salePhuTrach}-${visit.clusterId}`;
+    const key = `${visit.plannedDate}-${visit.outlet.salePhuTrach}`;
     grouped.set(key, [...(grouped.get(key) ?? []), visit]);
   }
 
