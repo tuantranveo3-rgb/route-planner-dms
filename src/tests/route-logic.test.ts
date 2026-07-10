@@ -173,6 +173,28 @@ describe("route logic", () => {
     expect(dayByCluster.get("Q1-B")).toBe("Thứ 2");
   });
 
+  it("orders a daily route from start point to the nearest next outlet without closing a loop", () => {
+    const outlets: Outlet[] = [
+      { ...strongOutlet, outletId: "ROUTE-FAR", tenDiemBan: "Far", salePhuTrach: "Sale Start", ghiNhanF: "F4", toaDoX: 10, toaDoY: 0 },
+      { ...strongOutlet, outletId: "ROUTE-NEAR", tenDiemBan: "Near", salePhuTrach: "Sale Start", ghiNhanF: "F4", toaDoX: 1, toaDoY: 0 },
+      { ...strongOutlet, outletId: "ROUTE-MID", tenDiemBan: "Mid", salePhuTrach: "Sale Start", ghiNhanF: "F4", toaDoX: 2, toaDoY: 0 },
+    ];
+    const plan = generateMonthlyRoutePlan(7, 2026, outlets, clusters, undefined, [], [
+      {
+        id: "start-sale-start",
+        salePhuTrach: "Sale Start",
+        tenDiemXuatPhat: "Van phong",
+        loaiDiem: "Văn phòng",
+        toaDoX: 0,
+        toaDoY: 0,
+        ghiChu: "",
+      },
+    ]);
+    const weekOne = plan.filter((visit) => visit.week === "W1" && !visit.status.startsWith("CS")).sort((a, b) => a.routeOrder - b.routeOrder);
+
+    expect(weekOne.map((visit) => visit.outlet.outletId)).toEqual(["ROUTE-NEAR", "ROUTE-MID", "ROUTE-FAR"]);
+  });
+
   it("auto-spreads imported sale clusters when no territory day plan exists", () => {
     const outlets: Outlet[] = [
       { ...strongOutlet, outletId: "AUTO-A", cumNho: "Q1-A", salePhuTrach: "Sale Import", ghiNhanF: "F1" },
@@ -356,6 +378,16 @@ describe("route logic", () => {
     expect(carryovers).toHaveLength(1);
     expect(plan.filter((visit) => visit.outlet.outletId === "LOW-F05")).toHaveLength(1);
     expect(plan[0].isCarryover).toBe(true);
+  });
+
+  it("keeps F0.5 and F0.3 visible as remote follow-up when the month is not due", () => {
+    const lowOutlet: Outlet = { ...strongOutlet, outletId: "LOW-VISIBLE", ghiNhanF: "F0.3", salePhuTrach: "Sale Low" };
+    const monthlyPlans = Array.from({ length: 12 }, (_, index) => generateMonthlyRoutePlan(index + 1, 2026, [lowOutlet], clusters));
+    const remoteMonth = monthlyPlans.find((plan) => plan.some((visit) => visit.status.startsWith("CS")));
+
+    expect(remoteMonth).toBeDefined();
+    expect(remoteMonth?.[0].frequency).toBe("F0.3");
+    expect(remoteMonth?.[0].warning).toContain("chưa tới chu kỳ");
   });
 
   it("summarizeExecution reports completed and missed visits", () => {

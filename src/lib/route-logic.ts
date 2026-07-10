@@ -454,7 +454,7 @@ export function generateMonthlyRoutePlan(
     const cluster = clusterById.get(outlet.cumNho);
     if (!cluster) continue;
     if (!isOutletAllowedByTerritory(outlet)) continue;
-    if (!shouldScheduleLowFrequencyOutlet(outlet, month, year)) continue;
+    const lowFrequencyNotDue = (outlet.frequency === "F0.5" || outlet.frequency === "F0.3") && !shouldScheduleLowFrequencyOutlet(outlet, month, year);
     const scheduledDays = getScheduledDays(outlet, cluster);
     const targetWeeks = getWeeksForOutlet(outlet, f2CounterByCluster, f1CounterByCluster);
 
@@ -465,7 +465,7 @@ export function generateMonthlyRoutePlan(
       const plannedDayName = pickPlannedDayName(scheduledDays, outletWeekSequence);
       const lacksSecondF8Slot = outlet.frequency === "F8" && scheduledDays.length < 2 && outletWeekSequence > 1;
       const slot = findSlot(week, cluster, outlet.salePhuTrach, plannedDayName, scheduledDays);
-      const isRemote = lacksSecondF8Slot || slot.isFull;
+      const isRemote = lowFrequencyNotDue || lacksSecondF8Slot || slot.isFull;
 
       if (!isRemote) {
         reserveSlot(slot.clusterKey, slot.saleDayKey);
@@ -484,7 +484,11 @@ export function generateMonthlyRoutePlan(
         outlet,
         frequency: outlet.frequency,
         status: isRemote ? "CS từ xa" : "Chưa đi",
-        warning: lacksSecondF8Slot ? `F8 cần 2 ngày/tuần cho cụm ${cluster.maCum}; hiện mới có ${scheduledDays.length} ngày ưu tiên nên lượt này chưa xếp tuyến.` : slot.warning,
+        warning: lowFrequencyNotDue
+          ? `${outlet.frequency} chưa tới chu kỳ đi trực tiếp trong tháng này; vẫn giữ trong Planner để theo dõi và ưu tiên khi quá hạn.`
+          : lacksSecondF8Slot
+            ? `F8 cần 2 ngày/tuần cho cụm ${cluster.maCum}; hiện mới có ${scheduledDays.length} ngày ưu tiên nên lượt này chưa xếp tuyến.`
+            : slot.warning,
         priorityReason: outlet.reason,
       });
     }
@@ -555,39 +559,7 @@ function orderVisitsFromStart(group: RouteVisit[], startPoint?: { toaDoX: number
     cursor = { toaDoX: next.outlet.toaDoX, toaDoY: next.outlet.toaDoY };
   }
 
-  return reduceRouteZigzag(ordered, startPoint);
-}
-
-function routeDistance(route: RouteVisit[], startPoint?: { toaDoX: number; toaDoY: number }) {
-  if (!route.length) return 0;
-  let total = startPoint ? distanceBetween(startPoint, route[0].outlet) : 0;
-  for (let index = 1; index < route.length; index += 1) {
-    total += distanceBetween(route[index - 1].outlet, route[index].outlet);
-  }
-  return total;
-}
-
-function reduceRouteZigzag(route: RouteVisit[], startPoint?: { toaDoX: number; toaDoY: number }) {
-  if (route.length < 4) return route;
-  let best = [...route];
-  let improved = true;
-  let guard = 0;
-
-  while (improved && guard < 8) {
-    improved = false;
-    guard += 1;
-    for (let left = 0; left < best.length - 2; left += 1) {
-      for (let right = left + 2; right < best.length; right += 1) {
-        const candidate = [...best.slice(0, left), ...best.slice(left, right + 1).reverse(), ...best.slice(right + 1)];
-        if (routeDistance(candidate, startPoint) + 0.000001 < routeDistance(best, startPoint)) {
-          best = candidate;
-          improved = true;
-        }
-      }
-    }
-  }
-
-  return best;
+  return ordered;
 }
 
 function getClusterCenter(group: RouteVisit[], cluster?: RouteCluster) {
