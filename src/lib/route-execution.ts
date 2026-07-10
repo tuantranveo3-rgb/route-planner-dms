@@ -48,7 +48,7 @@ export function upsertExecutionRecord(
 }
 
 export function summarizeExecution(plan: RouteVisit[], records: RouteExecutionRecord[]) {
-  const requiredVisits = plan.filter((visit) => visit.status !== "CS từ xa");
+  const requiredVisits = plan.filter((visit) => !visit.status.startsWith("CS"));
   const completed = requiredVisits.filter((visit) => isCompletedVisit(getEffectiveStatus(visit, records)));
   const missed = requiredVisits.filter((visit) => isMissedVisit(getEffectiveStatus(visit, records)));
   const remote = plan.filter((visit) => getEffectiveStatus(visit, records) === "CS từ xa");
@@ -84,7 +84,7 @@ export function buildCarryoversForNextMonth(plan: RouteVisit[], records: RouteEx
     const effectiveStatus = record?.actualStatus ?? visit.status;
     const isLowFrequencyMiss = (visit.frequency === "F0.5" || visit.frequency === "F0.3") && isMissedVisit(effectiveStatus);
     const shouldCarry = record?.carryToNextMonth || (visit.frequency !== "F0.5" && visit.frequency !== "F0.3" && isMissedVisit(effectiveStatus)) || isLowFrequencyMiss;
-    if (!shouldCarry || visit.status === "CS từ xa") continue;
+    if (!shouldCarry || visit.status.startsWith("CS")) continue;
     const dedupeKey = `${visit.outlet.outletId}-${visit.id}`;
     if (existing.has(dedupeKey)) continue;
     existing.add(dedupeKey);

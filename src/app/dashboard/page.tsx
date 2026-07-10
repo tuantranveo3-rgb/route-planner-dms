@@ -45,7 +45,7 @@ function getSaleWarnings(plan: ReturnType<typeof generateMonthlyRoutePlan>, terr
   const territoryBySale = new Map(territories.map((territory) => [territory.salePhuTrach, territory]));
   const grouped = new Map<string, { sale: string; week: string; dayName: string; visits: number; min: number; max: number }>();
 
-  for (const visit of plan.filter((item) => item.status !== "CS từ xa")) {
+  for (const visit of plan.filter((item) => !item.status.startsWith("CS"))) {
     const territory = territoryBySale.get(visit.outlet.salePhuTrach);
     const min = territory?.minVisitsPerDay ?? DEFAULT_SETTINGS.minVisitsPerSaleDay;
     const max = territory?.maxVisitsPerDay ?? DEFAULT_SETTINGS.maxVisitsPerSaleDay;

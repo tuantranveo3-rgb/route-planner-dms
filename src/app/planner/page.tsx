@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { DataTable, type Column } from "@/components/DataTable";
@@ -80,7 +80,7 @@ function applyUnavailableDays(plan: RouteVisit[], unavailableDays: SaleUnavailab
 
   return plan.map((visit) => {
     const unavailable = unavailableBySaleDate.get(`${visit.outlet.salePhuTrach}-${visit.plannedDate}`);
-    if (!unavailable || visit.status === "CS từ xa") return visit;
+    if (!unavailable || visit.status.startsWith("CS")) return visit;
 
     const nextDate = findNextAvailableDate(visit.plannedDate, visit.outlet.salePhuTrach, unavailableDays, month, year);
     const reason = `${unavailable.reason}${unavailable.note ? `: ${unavailable.note}` : ""}`;
@@ -101,7 +101,7 @@ function applyUnavailableDays(plan: RouteVisit[], unavailableDays: SaleUnavailab
 function groupDailySchedule(rows: RouteVisit[], salesConfig: SalesTerritory[], settings: PlannerSettings) {
   const grouped = new Map<string, { date: string; dayName: string; sale: string; visits: RouteVisit[]; min: number; max: number }>();
 
-  for (const visit of rows.filter((item) => item.status !== "CS từ xa")) {
+  for (const visit of rows.filter((item) => !item.status.startsWith("CS"))) {
     const key = `${visit.plannedDate}-${visit.outlet.salePhuTrach}`;
     const limits = getSaleLimits(salesConfig, visit.outlet.salePhuTrach, settings.minVisitsPerSaleDay, settings.maxVisitsPerSaleDay);
     const current = grouped.get(key) ?? {
@@ -287,7 +287,7 @@ export default function PlannerPage() {
 
   function getSaleDayWarnings(planItems: RouteVisit[], plannerSettings: PlannerSettings) {
     const grouped = new Map<string, { sale: string; week: WeekKey; dayName: string; visits: number }>();
-    for (const visit of planItems.filter((item) => item.status !== "CS từ xa")) {
+    for (const visit of planItems.filter((item) => !item.status.startsWith("CS"))) {
       const key = `${visit.week}-${visit.dayName}-${visit.outlet.salePhuTrach}`;
       const current = grouped.get(key) ?? {
         sale: visit.outlet.salePhuTrach,
@@ -317,7 +317,7 @@ export default function PlannerPage() {
     {
       key: "order",
       header: "STT đi",
-      cell: (row) => <span className="font-bold">{row.status === "CS từ xa" ? "-" : row.routeOrder}</span>,
+      cell: (row) => <span className="font-bold">{row.status.startsWith("CS") ? "-" : row.routeOrder}</span>,
     },
     {
       key: "plannedDate",
@@ -465,6 +465,8 @@ export default function PlannerPage() {
 
   const exportPlan = planWithExecution.map((visit) => ({ ...visit, status: getEffectiveStatus(visit, currentRecords) }));
   const selectedSaleExportPlan = sale === "all" ? exportPlan : exportPlan.filter((visit) => visit.outlet.salePhuTrach === sale);
+  const selectedSaleDirectCount = selectedSaleExportPlan.filter((visit) => !visit.status.startsWith("CS")).length;
+  const selectedSaleRemoteCount = selectedSaleExportPlan.length - selectedSaleDirectCount;
 
   return (
     <div>
@@ -614,6 +616,9 @@ export default function PlannerPage() {
         <div className="text-sm text-muted">
           Đang hiển thị {rows.length} lượt ghé. Trạng thái thực tế lưu trên trình duyệt bằng localStorage.
         </div>
+        <div className="mb-2 text-sm font-medium text-ink">
+          Export tháng {sale === "all" ? "tất cả sale" : sale}: {selectedSaleExportPlan.length} dòng, gồm {selectedSaleDirectCount} đi trực tiếp và {selectedSaleRemoteCount} CS từ xa/chưa tới chu kỳ. Export theo filter chỉ xuất {rows.length} dòng đang lọc.
+        </div>
         <div className="flex flex-wrap gap-2">
           <button
             className="rounded-md border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-bold text-blue-700"
@@ -727,3 +732,4 @@ export default function PlannerPage() {
     </div>
   );
 }
+
