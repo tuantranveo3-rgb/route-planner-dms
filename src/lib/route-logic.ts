@@ -57,6 +57,21 @@ function distanceBetween(a: { toaDoX: number; toaDoY: number }, b: { toaDoX: num
   return Math.hypot(a.toaDoX - b.toaDoX, a.toaDoY - b.toaDoY);
 }
 
+function looksLikeVietnamLngLat(point: { toaDoX: number; toaDoY: number }) {
+  return point.toaDoX >= 102 && point.toaDoX <= 110 && point.toaDoY >= 8 && point.toaDoY <= 24;
+}
+
+function routeClusterDistance(a: RouteCluster, b: RouteCluster) {
+  return distanceBetween({ toaDoX: a.toaDoTamX, toaDoY: a.toaDoTamY }, { toaDoX: b.toaDoTamX, toaDoY: b.toaDoTamY });
+}
+
+function sameDayClusterThreshold(a: RouteCluster, b: RouteCluster) {
+  if (looksLikeVietnamLngLat({ toaDoX: a.toaDoTamX, toaDoY: a.toaDoTamY }) && looksLikeVietnamLngLat({ toaDoX: b.toaDoTamX, toaDoY: b.toaDoTamY })) {
+    return 0.045;
+  }
+  return 6;
+}
+
 function stableHash(value: string) {
   return [...value].reduce((hash, char) => (hash * 31 + char.charCodeAt(0)) >>> 0, 7);
 }
@@ -200,6 +215,7 @@ export function generateMonthlyRoutePlan(
   const visits: RouteVisit[] = [];
   const capacityCounter = new Map<string, number>();
   const saleDayCounter = new Map<string, number>();
+  const saleDayClusters = new Map<string, Set<string>>();
   const outletWeekCounter = new Map<string, number>();
   const f2CounterByCluster = new Map<string, number>();
   const f1CounterByCluster = new Map<string, number>();
@@ -289,6 +305,23 @@ export function generateMonthlyRoutePlan(
     });
   }
 
+  function canAddClusterToSaleDay(saleDayKey: string, cluster: RouteCluster) {
+    const currentClusterIds = saleDayClusters.get(saleDayKey);
+    if (!currentClusterIds || currentClusterIds.size === 0 || currentClusterIds.has(cluster.maCum)) return true;
+
+    return [...currentClusterIds].some((clusterId) => {
+      const existingCluster = clusterById.get(clusterId);
+      if (!existingCluster) return false;
+      return routeClusterDistance(existingCluster, cluster) <= sameDayClusterThreshold(existingCluster, cluster);
+    });
+  }
+
+  function getSaleDayClusterDistanceReason(saleDayKey: string, cluster: RouteCluster) {
+    if (canAddClusterToSaleDay(saleDayKey, cluster)) return "";
+    const currentClusterIds = [...(saleDayClusters.get(saleDayKey) ?? [])].join(", ");
+    return `cụm ${cluster.maCum} quá xa tuyến đang có trong ngày (${currentClusterIds})`;
+  }
+
   function findSlot(week: WeekKey, cluster: RouteCluster, saleName: string, preferredDayName: string, allowedDays: string[]) {
     const capacity = cluster.capacityNgay || settings.defaultDailyCapacity;
     const saleMax = getSaleMax(saleName);
@@ -300,7 +333,8 @@ export function generateMonthlyRoutePlan(
       const saleDayKey = `${plannedDate}-${saleName}`;
       const clusterUsed = capacityCounter.get(clusterKey) ?? 0;
       const saleUsed = saleDayCounter.get(saleDayKey) ?? 0;
-      if (clusterUsed < capacity && saleUsed < saleMax) {
+      const clusterFitsDayRoute = canAddClusterToSaleDay(saleDayKey, cluster);
+      if (clusterUsed < capacity && saleUsed < saleMax && clusterFitsDayRoute) {
         return {
           dayName,
           plannedDate,
@@ -322,6 +356,7 @@ export function generateMonthlyRoutePlan(
       isSaleUnavailable(saleName, plannedDate) ? `${saleName} không đi tuyến ngày ${plannedDate} (${getUnavailableReason(saleName, plannedDate)})` : "",
       clusterUsed >= capacity ? `cụm ${cluster.maCum} đã đủ capacity ${capacity}` : "",
       saleUsed >= saleMax ? `${saleName} đã đủ max ${saleMax} điểm/ngày` : "",
+      getSaleDayClusterDistanceReason(saleDayKey, cluster),
     ].filter(Boolean);
 
     return {
@@ -334,9 +369,12 @@ export function generateMonthlyRoutePlan(
     };
   }
 
-  function reserveSlot(clusterKey: string, saleDayKey: string) {
+  function reserveSlot(clusterKey: string, saleDayKey: string, clusterId: string) {
     capacityCounter.set(clusterKey, (capacityCounter.get(clusterKey) ?? 0) + 1);
     saleDayCounter.set(saleDayKey, (saleDayCounter.get(saleDayKey) ?? 0) + 1);
+    const currentClusters = saleDayClusters.get(saleDayKey) ?? new Set<string>();
+    currentClusters.add(clusterId);
+    saleDayClusters.set(saleDayKey, currentClusters);
   }
 
   function getSaleMin(saleName: string) {
@@ -378,8 +416,15 @@ export function generateMonthlyRoutePlan(
 
         for (const source of smallGroups) {
           if (!source.items.every((item) => item.plannedDate === source.plannedDate && item.dayName === source.dayName)) continue;
+          const sourceCluster = clusterById.get(source.items[0]?.clusterId ?? "");
           const target = groups
-            .filter((group) => group !== source && group.items.length + source.items.length <= max && !isSaleUnavailable(saleName, group.plannedDate))
+            .filter((group) => {
+              if (!sourceCluster) return false;
+              if (group === source) return false;
+              if (group.items.length + source.items.length > max) return false;
+              if (isSaleUnavailable(saleName, group.plannedDate)) return false;
+              return canAddClusterToSaleDay(`${group.plannedDate}-${saleName}`, sourceCluster);
+            })
             .sort((a, b) => {
               const aReady = a.items.length >= min ? 0 : 1;
               const bReady = b.items.length >= min ? 0 : 1;
@@ -400,6 +445,12 @@ export function generateMonthlyRoutePlan(
             visit.plannedDate = target.plannedDate;
             appendWarning(visit, `Tự gom từ ${source.dayName} sang ${target.dayName} vì ngày cũ dưới min ${min} điểm/ngày.`);
             target.items.push(visit);
+            if (sourceCluster) {
+              const targetSaleDayKey = `${target.plannedDate}-${saleName}`;
+              const currentClusters = saleDayClusters.get(targetSaleDayKey) ?? new Set<string>();
+              currentClusters.add(sourceCluster.maCum);
+              saleDayClusters.set(targetSaleDayKey, currentClusters);
+            }
           }
           source.items.length = 0;
           moved = true;
@@ -424,7 +475,9 @@ export function generateMonthlyRoutePlan(
     const targetWeeks: WeekKey[] = outlet.frequency === "F4" || outlet.frequency === "F2" ? ["W1", "W2"] : ["W2", "W3"];
     const week = targetWeeks.find((candidate) => !findSlot(candidate, cluster, outlet.salePhuTrach, scheduledDayName, scheduledDays).isFull) ?? targetWeeks[0];
     const slot = findSlot(week, cluster, outlet.salePhuTrach, scheduledDayName, scheduledDays);
-    reserveSlot(slot.clusterKey, slot.saleDayKey);
+    if (!slot.isFull) {
+      reserveSlot(slot.clusterKey, slot.saleDayKey, cluster.maCum);
+    }
 
     visits.push({
       id: `${year}-${month}-${week}-${outlet.outletId}-BU-${carryover.sourceVisitId}`,
@@ -438,7 +491,7 @@ export function generateMonthlyRoutePlan(
       routeOrder: 0,
       outlet,
       frequency: outlet.frequency,
-      status: "Chưa đi",
+      status: slot.isFull ? "CS từ xa" : "Chưa đi",
       warning: slot.warning,
       priorityReason: `Bù tuyến từ ${carryover.sourceWeek} tháng ${carryover.sourceMonth}/${carryover.sourceYear}: ${carryover.reason}`,
       isCarryover: true,
@@ -468,7 +521,7 @@ export function generateMonthlyRoutePlan(
       const isRemote = lowFrequencyNotDue || lacksSecondF8Slot || slot.isFull;
 
       if (!isRemote) {
-        reserveSlot(slot.clusterKey, slot.saleDayKey);
+        reserveSlot(slot.clusterKey, slot.saleDayKey, cluster.maCum);
       }
 
       visits.push({
@@ -515,7 +568,9 @@ function getWeeksForOutlet(
     f1CounterByCluster.set(outlet.cumNho, current + 1);
     return [weeks[current % weeks.length]];
   }
-  if (outlet.frequency === "F0.5") return ["W4"];
+  if (outlet.frequency === "F0.5" || outlet.frequency === "F0.3") {
+    return [weeks[stableHash(`${outlet.outletId}-${outlet.cumNho}`) % weeks.length]];
+  }
   return ["W4"];
 }
 

@@ -139,6 +139,37 @@ describe("route logic", () => {
     expect(plan.some((visit) => visit.status.startsWith("CS") && visit.warning?.includes("max"))).toBe(true);
   });
 
+  it("does not mix distant clusters into one sale day route", () => {
+    const saleName = "Sale Far";
+    const outlets: Outlet[] = [
+      { ...strongOutlet, outletId: "FAR-Q1", cumNho: "Q1-A", salePhuTrach: saleName, ghiNhanF: "F1" },
+      { ...strongOutlet, outletId: "FAR-TD", cumNho: "TD-A", salePhuTrach: saleName, ghiNhanF: "F1" },
+    ];
+    const territories = [
+      {
+        salePhuTrach: saleName,
+        khuVucPhuTrach: ["Quan 1", "Thu Duc"],
+        cumNhoPhuTrach: ["Q1-A", "TD-A"],
+        saleBackup: "",
+        ngayDiUuTien: ["Thứ 2"],
+        lichTheoNgay: [{ dayName: "Thứ 2", clusterIds: ["Q1-A", "TD-A"] }],
+        minVisitsPerDay: 1,
+        maxVisitsPerDay: 15,
+        ghiChu: "",
+      },
+    ];
+    const plan = generateMonthlyRoutePlan(7, 2026, outlets, clusters, undefined, [], [], territories);
+    const directClustersByDate = new Map<string, Set<string>>();
+
+    for (const visit of plan.filter((item) => !item.status.startsWith("CS"))) {
+      const key = `${visit.plannedDate}-${visit.outlet.salePhuTrach}`;
+      directClustersByDate.set(key, new Set([...(directClustersByDate.get(key) ?? []), visit.clusterId]));
+    }
+
+    expect([...directClustersByDate.values()].every((clusterIds) => clusterIds.size === 1)).toBe(true);
+    expect(plan.some((visit) => visit.status.startsWith("CS") && visit.warning?.includes("quá xa"))).toBe(true);
+  });
+
   it("assigns a unique daily route order for each sale day while keeping cluster assignment", () => {
     const outlets: Outlet[] = [
       { ...strongOutlet, outletId: "CL-A-1", cumNho: "Q1-A", salePhuTrach: "Sale Cluster", ghiNhanF: "F4", toaDoX: 106.7001, toaDoY: 10.781 },
@@ -179,7 +210,6 @@ describe("route logic", () => {
     ];
     const plan = generateMonthlyRoutePlan(7, 2026, outlets, clusters, undefined, [], [
       {
-        id: "start-sale-start",
         salePhuTrach: "Sale Start",
         tenDiemXuatPhat: "Van phong",
         loaiDiem: "Văn phòng",
