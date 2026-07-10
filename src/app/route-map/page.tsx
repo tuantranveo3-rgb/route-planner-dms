@@ -298,7 +298,7 @@ export default function RouteMapPage() {
   );
   const plan = useMemo(() => generateMonthlyRoutePlan(month, year, outlets, routeClusters, DEFAULT_SETTINGS, [], startPointsForPlanning, salesConfig, unavailableDays), [month, year, outlets, routeClusters, startPointsForPlanning, salesConfig, unavailableDays]);
   const dateCandidateRows = plan
-    .filter((visit) => visit.status !== "CS từ xa")
+    .filter((visit) => !visit.status.startsWith("CS"))
     .filter((visit) => week === "all" || visit.week === week)
     .filter((visit) => sale === "all" || visit.outlet.salePhuTrach === sale)
     .filter((visit) => cluster === "all" || visit.clusterId === cluster)
@@ -311,7 +311,7 @@ export default function RouteMapPage() {
   }, [month, routeDates, week, year]);
   const routeDateSet = useMemo(() => new Set(routeDates), [routeDates]);
   const rows = plan
-    .filter((visit) => visit.status !== "CS từ xa")
+    .filter((visit) => !visit.status.startsWith("CS"))
     .filter((visit) => date === "all" || visit.plannedDate === date)
     .filter((visit) => week === "all" || visit.week === week)
     .filter((visit) => sale === "all" || visit.outlet.salePhuTrach === sale)

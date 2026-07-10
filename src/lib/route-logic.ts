@@ -47,8 +47,25 @@ function spreadClusterDayName(preferredDayName: string, sequence: number): strin
   return workingDayNames[(startIndex + sequence) % workingDayNames.length];
 }
 
+function shiftWorkingDay(dayName: string, offset: number): string {
+  const startIndex = workingDayNames.indexOf(dayName);
+  if (startIndex < 0) return dayName;
+  return workingDayNames[(startIndex + offset) % workingDayNames.length];
+}
+
 function distanceBetween(a: { toaDoX: number; toaDoY: number }, b: { toaDoX: number; toaDoY: number }) {
   return Math.hypot(a.toaDoX - b.toaDoX, a.toaDoY - b.toaDoY);
+}
+
+function stableHash(value: string) {
+  return [...value].reduce((hash, char) => (hash * 31 + char.charCodeAt(0)) >>> 0, 7);
+}
+
+function shouldScheduleLowFrequencyOutlet(outlet: EnrichedOutlet, month: number, year: number) {
+  if (outlet.frequency !== "F0.5" && outlet.frequency !== "F0.3") return true;
+  const interval = outlet.frequency === "F0.5" ? 2 : 3;
+  const monthIndex = year * 12 + month - 1;
+  return monthIndex % interval === stableHash(outlet.outletId) % interval;
 }
 
 export function calculateSalesScore(doanhSo3Thang: number): number {
@@ -191,21 +208,16 @@ export function generateMonthlyRoutePlan(
   const outletById = new Map(enriched.map((outlet) => [outlet.outletId, outlet]));
   const lowFrequencyCarryoverOutlets = new Set<string>();
   const territoryBySale = new Map(salesTerritories.map((territory) => [territory.salePhuTrach, territory]));
-  const configuredClusterIdsBySale = new Map(
-    salesTerritories.map((territory) => {
-      const dayPlanClusterIds = (territory.lichTheoNgay ?? []).flatMap((dayPlan) => dayPlan.clusterIds);
-      return [territory.salePhuTrach, new Set(dayPlanClusterIds.length ? dayPlanClusterIds : territory.cumNhoPhuTrach)] as const;
-    }),
-  );
-  const scheduledDayBySaleCluster = new Map<string, string>();
+  const configuredClusterIdsBySale = new Map(salesTerritories.map((territory) => [territory.salePhuTrach, new Set(territory.cumNhoPhuTrach)] as const));
+  const scheduledDaysBySaleCluster = new Map<string, string[]>();
+  const f8ClusterKeys = new Set(enriched.filter((outlet) => outlet.frequency === "F8").map((outlet) => `${outlet.salePhuTrach}-${outlet.cumNho}`));
 
   for (const territory of salesTerritories) {
     for (const dayPlan of territory.lichTheoNgay ?? []) {
-      dayPlan.clusterIds.forEach((clusterId, index) => {
+      dayPlan.clusterIds.forEach((clusterId) => {
         const key = `${territory.salePhuTrach}-${clusterId}`;
-        if (!scheduledDayBySaleCluster.has(key)) {
-          scheduledDayBySaleCluster.set(key, spreadClusterDayName(dayPlan.dayName, index));
-        }
+        const current = scheduledDaysBySaleCluster.get(key) ?? [];
+        if (!current.includes(dayPlan.dayName)) scheduledDaysBySaleCluster.set(key, [...current, dayPlan.dayName]);
       });
     }
   }
@@ -225,9 +237,15 @@ export function generateMonthlyRoutePlan(
     const preferredDays = territory?.ngayDiUuTien?.length ? territory.ngayDiUuTien : workingDayNames;
     clusterIds.sort().forEach((clusterId, index) => {
       const key = `${saleName}-${clusterId}`;
-      if (!scheduledDayBySaleCluster.has(key)) {
+      if (!scheduledDaysBySaleCluster.has(key)) {
         const preferredDay = preferredDays[index % preferredDays.length] ?? workingDayNames[index % workingDayNames.length];
-        scheduledDayBySaleCluster.set(key, spreadClusterDayName(preferredDay, Math.floor(index / preferredDays.length)));
+        const firstDay = spreadClusterDayName(preferredDay, Math.floor(index / preferredDays.length));
+        const autoDays = [firstDay];
+        if (f8ClusterKeys.has(key)) {
+          const secondDay = shiftWorkingDay(firstDay, 3);
+          if (!autoDays.includes(secondDay)) autoDays.push(secondDay);
+        }
+        scheduledDaysBySaleCluster.set(key, autoDays);
       }
     });
   }
@@ -253,20 +271,29 @@ export function generateMonthlyRoutePlan(
     return territoryBySale.get(saleName)?.maxVisitsPerDay ?? settings.maxVisitsPerSaleDay;
   }
 
-  function candidateDays(preferredDayName: string) {
+  function getScheduledDays(outlet: EnrichedOutlet, cluster: RouteCluster) {
+    const days = scheduledDaysBySaleCluster.get(`${outlet.salePhuTrach}-${outlet.cumNho}`);
+    return days?.length ? days : [cluster.ngayDiCoDinh];
+  }
+
+  function pickPlannedDayName(allowedDays: string[], sequence: number) {
+    return allowedDays[(sequence - 1) % allowedDays.length] ?? allowedDays[0] ?? workingDayNames[0];
+  }
+
+  function candidateDays(preferredDayName: string, allowedDays: string[]) {
     const preferredIndex = dayIndexByName[preferredDayName] ?? 1;
-    return [...workingDayNames].sort((a, b) => {
+    return [...new Set(allowedDays.length ? allowedDays : workingDayNames)].sort((a, b) => {
       const distanceA = Math.abs((dayIndexByName[a] ?? 1) - preferredIndex);
       const distanceB = Math.abs((dayIndexByName[b] ?? 1) - preferredIndex);
       return distanceA - distanceB || (dayIndexByName[a] ?? 1) - (dayIndexByName[b] ?? 1);
     });
   }
 
-  function findSlot(week: WeekKey, cluster: RouteCluster, saleName: string, preferredDayName: string) {
+  function findSlot(week: WeekKey, cluster: RouteCluster, saleName: string, preferredDayName: string, allowedDays: string[]) {
     const capacity = cluster.capacityNgay || settings.defaultDailyCapacity;
     const saleMax = getSaleMax(saleName);
 
-    for (const dayName of candidateDays(preferredDayName)) {
+    for (const dayName of candidateDays(preferredDayName, allowedDays)) {
       const clusterKey = `${week}-${cluster.maCum}-${dayName}`;
       const plannedDate = getPlannedDate(year, month, week, dayName);
       if (isSaleUnavailable(saleName, plannedDate)) continue;
@@ -324,7 +351,7 @@ export function generateMonthlyRoutePlan(
     for (let pass = 0; pass < 6; pass += 1) {
       const bySaleWeek = new Map<string, RouteVisit[]>();
       for (const visit of visits) {
-        if (visit.status === "CS từ xa") continue;
+        if (visit.status.startsWith("CS")) continue;
         const key = `${visit.year}-${visit.month}-${visit.week}-${visit.outlet.salePhuTrach}-${visit.clusterId}`;
         bySaleWeek.set(key, [...(bySaleWeek.get(key) ?? []), visit]);
       }
@@ -333,6 +360,7 @@ export function generateMonthlyRoutePlan(
       for (const weekVisits of bySaleWeek.values()) {
         const saleName = weekVisits[0]?.outlet.salePhuTrach;
         if (!saleName) continue;
+        if (weekVisits.some((visit) => visit.frequency === "F8")) continue;
         const min = getSaleMin(saleName);
         const max = getSaleMax(saleName);
         const dayGroups = new Map<string, RouteVisit[]>();
@@ -391,10 +419,11 @@ export function generateMonthlyRoutePlan(
     if (outlet.frequency === "F0.5" || outlet.frequency === "F0.3") {
       lowFrequencyCarryoverOutlets.add(outlet.outletId);
     }
-    const scheduledDayName = scheduledDayBySaleCluster.get(`${outlet.salePhuTrach}-${outlet.cumNho}`) ?? cluster.ngayDiCoDinh;
+    const scheduledDays = getScheduledDays(outlet, cluster);
+    const scheduledDayName = scheduledDays[0] ?? cluster.ngayDiCoDinh;
     const targetWeeks: WeekKey[] = outlet.frequency === "F4" || outlet.frequency === "F2" ? ["W1", "W2"] : ["W2", "W3"];
-    const week = targetWeeks.find((candidate) => !findSlot(candidate, cluster, outlet.salePhuTrach, scheduledDayName).isFull) ?? targetWeeks[0];
-    const slot = findSlot(week, cluster, outlet.salePhuTrach, scheduledDayName);
+    const week = targetWeeks.find((candidate) => !findSlot(candidate, cluster, outlet.salePhuTrach, scheduledDayName, scheduledDays).isFull) ?? targetWeeks[0];
+    const slot = findSlot(week, cluster, outlet.salePhuTrach, scheduledDayName, scheduledDays);
     reserveSlot(slot.clusterKey, slot.saleDayKey);
 
     visits.push({
@@ -425,17 +454,18 @@ export function generateMonthlyRoutePlan(
     const cluster = clusterById.get(outlet.cumNho);
     if (!cluster) continue;
     if (!isOutletAllowedByTerritory(outlet)) continue;
-    const scheduledDayName = scheduledDayBySaleCluster.get(`${outlet.salePhuTrach}-${outlet.cumNho}`) ?? cluster.ngayDiCoDinh;
+    if (!shouldScheduleLowFrequencyOutlet(outlet, month, year)) continue;
+    const scheduledDays = getScheduledDays(outlet, cluster);
     const targetWeeks = getWeeksForOutlet(outlet, f2CounterByCluster, f1CounterByCluster);
 
     for (const week of targetWeeks) {
       const outletWeekKey = `${week}-${outlet.outletId}`;
       const outletWeekSequence = (outletWeekCounter.get(outletWeekKey) ?? 0) + 1;
       outletWeekCounter.set(outletWeekKey, outletWeekSequence);
-      const plannedDayName = getPlannedDayName(scheduledDayName, outletWeekSequence);
-      const slot = findSlot(week, cluster, outlet.salePhuTrach, plannedDayName);
-      const isFlexibleLowFrequency = outlet.frequency === "F0.5" || outlet.frequency === "F0.3";
-      const isRemote = isFlexibleLowFrequency && slot.isFull;
+      const plannedDayName = pickPlannedDayName(scheduledDays, outletWeekSequence);
+      const lacksSecondF8Slot = outlet.frequency === "F8" && scheduledDays.length < 2 && outletWeekSequence > 1;
+      const slot = findSlot(week, cluster, outlet.salePhuTrach, plannedDayName, scheduledDays);
+      const isRemote = lacksSecondF8Slot || slot.isFull;
 
       if (!isRemote) {
         reserveSlot(slot.clusterKey, slot.saleDayKey);
@@ -454,7 +484,7 @@ export function generateMonthlyRoutePlan(
         outlet,
         frequency: outlet.frequency,
         status: isRemote ? "CS từ xa" : "Chưa đi",
-        warning: slot.warning,
+        warning: lacksSecondF8Slot ? `F8 cần 2 ngày/tuần cho cụm ${cluster.maCum}; hiện mới có ${scheduledDays.length} ngày ưu tiên nên lượt này chưa xếp tuyến.` : slot.warning,
         priorityReason: outlet.reason,
       });
     }
@@ -483,13 +513,6 @@ function getWeeksForOutlet(
   }
   if (outlet.frequency === "F0.5") return ["W4"];
   return ["W4"];
-}
-
-function getPlannedDayName(baseDayName: string, sequence: number): string {
-  if (sequence <= 1) return baseDayName;
-  const baseIndex = dayIndexByName[baseDayName] ?? 1;
-  const nextIndex = Math.min(6, baseIndex + 2 * (sequence - 1));
-  return dayNameByIndex[nextIndex];
 }
 
 export function getPlannedDate(year: number, month: number, week: WeekKey, dayName: string): string {
@@ -614,7 +637,7 @@ export function getOverloadedClusters(plan: RouteVisit[], clusters: RouteCluster
   const capacityByCluster = new Map(clusters.map((cluster) => [cluster.maCum, cluster.capacityNgay]));
   const counts = new Map<string, { week: WeekKey; clusterId: string; clusterName: string; visits: number; capacity: number }>();
 
-  for (const visit of plan.filter((item) => item.status !== "CS từ xa")) {
+  for (const visit of plan.filter((item) => !item.status.startsWith("CS"))) {
     const key = `${visit.week}-${visit.clusterId}-${visit.dayName}`;
     const existing = counts.get(key) ?? {
       week: visit.week,

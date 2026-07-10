@@ -97,13 +97,13 @@ describe("route logic", () => {
         ghiChu: "",
       },
     ];
-    const outlet = { ...strongOutlet, doanhSo3Thang: 70_000_000, soDon3Thang: 6, tiemNang: 2, ruiRoMatKhach: 1 };
+    const outlet = { ...strongOutlet, doanhSo3Thang: 70_000_000, soDon3Thang: 6, tiemNang: 2, ruiRoMatKhach: 1, ghiNhanF: "F1" as const };
     const plan = generateMonthlyRoutePlan(5, 2026, [outlet], clusters, undefined, [], [], customTerritories);
 
     expect(plan.some((visit) => visit.dayName === "Thứ 5")).toBe(true);
   });
 
-  it("auto-moves visits to nearby days when a sale reaches daily max", () => {
+  it("does not overfill a sale day when only one priority day is configured", () => {
     const saleName = "Sale Max";
     const dayName = clusters[0].ngayDiCoDinh;
     const outlets = Array.from({ length: 16 }, (_, index) => ({
@@ -129,14 +129,14 @@ describe("route logic", () => {
       },
     ];
     const plan = generateMonthlyRoutePlan(5, 2026, outlets, clusters, undefined, [], [], territories);
-    const weekOneVisits = plan.filter((visit) => visit.week === "W1" && visit.outlet.salePhuTrach === saleName && visit.status !== "CS từ xa");
+    const weekOneVisits = plan.filter((visit) => visit.week === "W1" && visit.outlet.salePhuTrach === saleName && !visit.status.startsWith("CS"));
     const countsByDate = new Map<string, number>();
     for (const visit of weekOneVisits) {
       countsByDate.set(visit.plannedDate, (countsByDate.get(visit.plannedDate) ?? 0) + 1);
     }
 
     expect(Math.max(...countsByDate.values())).toBeLessThanOrEqual(15);
-    expect(new Set(weekOneVisits.map((visit) => visit.dayName)).size).toBeGreaterThan(1);
+    expect(plan.some((visit) => visit.status.startsWith("CS") && visit.warning?.includes("max"))).toBe(true);
   });
 
   it("assigns daily route order within each small cluster instead of across the whole district", () => {
@@ -160,7 +160,7 @@ describe("route logic", () => {
       },
     ];
     const plan = generateMonthlyRoutePlan(7, 2026, outlets, clusters, undefined, [], [], territories);
-    const weekOne = plan.filter((visit) => visit.week === "W1" && visit.status !== "CS từ xa");
+    const weekOne = plan.filter((visit) => visit.week === "W1" && !visit.status.startsWith("CS"));
     const ordersByCluster = new Map<string, number[]>();
     for (const visit of weekOne) {
       ordersByCluster.set(visit.clusterId, [...(ordersByCluster.get(visit.clusterId) ?? []), visit.routeOrder]);
@@ -170,7 +170,7 @@ describe("route logic", () => {
     expect(ordersByCluster.get("Q1-A")?.sort()).toEqual([1, 2]);
     expect(ordersByCluster.get("Q1-B")?.sort()).toEqual([1, 2]);
     expect(dayByCluster.get("Q1-A")).toBe("Thứ 2");
-    expect(dayByCluster.get("Q1-B")).toBe("Thứ 3");
+    expect(dayByCluster.get("Q1-B")).toBe("Thứ 2");
   });
 
   it("auto-spreads imported sale clusters when no territory day plan exists", () => {
@@ -183,6 +183,16 @@ describe("route logic", () => {
 
     expect(dayByCluster.get("Q1-A")).toBe("Thứ 2");
     expect(dayByCluster.get("TB-A")).toBe("Thứ 3");
+  });
+
+  it("auto-creates two weekly days for F8 clusters when no priority day exists", () => {
+    const outlet: Outlet = { ...strongOutlet, outletId: "AUTO-F8", cumNho: "GV-A", salePhuTrach: "Sale Auto F8", ghiNhanF: "F8" };
+    const plan = generateMonthlyRoutePlan(7, 2026, [outlet], clusters);
+    const realVisits = plan.filter((visit) => !visit.status.startsWith("CS"));
+
+    expect(realVisits).toHaveLength(8);
+    expect(new Set(realVisits.map((visit) => visit.dayName)).size).toBe(2);
+    expect(new Set(realVisits.map((visit) => visit.clusterId))).toEqual(new Set(["GV-A"]));
   });
 
   it("keeps the first valid day when the same cluster is selected on many days", () => {
@@ -210,10 +220,10 @@ describe("route logic", () => {
     const dayByCluster = new Map(plan.map((visit) => [visit.clusterId, visit.dayName]));
 
     expect(dayByCluster.get("Q1-A")).toBe("Thứ 2");
-    expect(dayByCluster.get("Q1-B")).toBe("Thứ 3");
+    expect(dayByCluster.get("Q1-B")).toBe("Thứ 2");
   });
 
-  it("only schedules clusters selected in the sale daily territory plan", () => {
+  it("uses sale daily territory plan as priority days without dropping other assigned clusters", () => {
     const outlets: Outlet[] = [
       { ...strongOutlet, outletId: "IN-PLAN", cumNho: "GV-A", quanHuyen: "Gò Vấp", salePhuTrach: "Sale Strict", ghiNhanF: "F1" },
       { ...strongOutlet, outletId: "OUT-PLAN", cumNho: "BT-A", quanHuyen: "Bình Thạnh", salePhuTrach: "Sale Strict", ghiNhanF: "F1" },
@@ -233,11 +243,40 @@ describe("route logic", () => {
     ];
     const plan = generateMonthlyRoutePlan(7, 2026, outlets, clusters, undefined, [], [], territories);
 
-    expect(plan.map((visit) => visit.outlet.outletId)).toEqual(["IN-PLAN"]);
+    expect(plan.map((visit) => visit.outlet.outletId).sort()).toEqual(["IN-PLAN", "OUT-PLAN"]);
     expect(plan[0].dayName).toBe("Thứ 2");
   });
 
-  it("does not schedule visits on sale unavailable days", () => {
+  it("keeps F8 inside the same cluster days and warns when the second weekly slot is missing", () => {
+    const outlet: Outlet = { ...strongOutlet, outletId: "F8-GV", cumNho: "GV-A", salePhuTrach: "Sale F8", ghiNhanF: "F8" };
+    const oneDayTerritory = {
+      salePhuTrach: "Sale F8",
+      khuVucPhuTrach: ["Go Vap"],
+      cumNhoPhuTrach: ["GV-A"],
+      saleBackup: "",
+      ngayDiUuTien: ["Thứ 2"],
+      lichTheoNgay: [{ dayName: "Thứ 2", clusterIds: ["GV-A"] }],
+      minVisitsPerDay: 1,
+      maxVisitsPerDay: 15,
+      ghiChu: "",
+    };
+    const twoDayTerritory = {
+      ...oneDayTerritory,
+      lichTheoNgay: [
+        { dayName: "Thứ 2", clusterIds: ["GV-A"] },
+        { dayName: "Thứ 5", clusterIds: ["GV-A"] },
+      ],
+    };
+    const oneDayPlan = generateMonthlyRoutePlan(7, 2026, [outlet], clusters, undefined, [], [], [oneDayTerritory]);
+    const twoDayPlan = generateMonthlyRoutePlan(7, 2026, [outlet], clusters, undefined, [], [], [twoDayTerritory]);
+
+    expect(oneDayPlan.filter((visit) => !visit.status.startsWith("CS"))).toHaveLength(4);
+    expect(oneDayPlan.some((visit) => visit.warning?.includes("F8 cần 2 ngày/tuần"))).toBe(true);
+    expect(twoDayPlan.filter((visit) => !visit.status.startsWith("CS"))).toHaveLength(8);
+    expect(new Set(twoDayPlan.map((visit) => visit.dayName))).toEqual(new Set(["Thứ 2", "Thứ 5"]));
+  });
+
+  it("does not force a real route when the only priority day is unavailable", () => {
     const territory = {
       salePhuTrach: "Sale Off",
       khuVucPhuTrach: ["Quận 1"],
@@ -265,8 +304,8 @@ describe("route logic", () => {
     ]);
 
     expect(plan).toHaveLength(1);
-    expect(plan[0].plannedDate).not.toBe("2026-06-01");
-    expect(plan[0].warning).toContain("Tự dời");
+    expect(plan[0].status.startsWith("CS")).toBe(true);
+    expect(plan[0].warning).toContain("không đi tuyến");
   });
 
   it("builds carryover items from missed execution records and injects them into next month", () => {
@@ -321,7 +360,7 @@ describe("route logic", () => {
 
   it("summarizeExecution reports completed and missed visits", () => {
     const plan = generateMonthlyRoutePlan(5, 2026, seedOutlets, clusters);
-    const requiredVisits = plan.filter((visit) => visit.status !== "CS từ xa");
+    const requiredVisits = plan.filter((visit) => !visit.status.startsWith("CS"));
     const first = requiredVisits[0];
     const second = requiredVisits.find((visit) => visit.id !== first.id)!;
     const records = upsertExecutionRecord(upsertExecutionRecord([], first, { actualStatus: "Có đơn" }), second, { actualStatus: "Dời lịch" });
