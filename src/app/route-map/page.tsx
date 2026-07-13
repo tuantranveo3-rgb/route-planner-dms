@@ -323,7 +323,7 @@ export default function RouteMapPage() {
   const isSingleSaleDay = sale !== "all" && date !== "all";
   const isOverviewMode = !isSingleSaleDay && (sale === "all" || cluster === "all");
   const shouldDrawRouteLines = isSingleSaleDay || !isOverviewMode;
-  const mapMarkerNumberByVisitId = useMemo(() => new Map(rows.map((visit, index) => [visit.id, index + 1])), [rows]);
+  const displayOrderByVisitId = useMemo(() => new Map(rows.map((visit, index) => [visit.id, index + 1])), [rows]);
   const dailyStartBySale = new Map(currentStartPoints.filter((point) => point.date).map((point) => [`${point.date}-${point.salePhuTrach}`, point]));
   const defaultStartBySale = new Map(currentStartPoints.filter((point) => !point.date).map((point) => [point.salePhuTrach, point]));
   const visibleStartPoints = Array.from(
@@ -440,7 +440,7 @@ export default function RouteMapPage() {
         }
 
         for (const { visit, position } of visitPositions) {
-          const displayOrder = isOverviewMode ? (mapMarkerNumberByVisitId.get(visit.id) ?? visit.routeOrder) : visit.routeOrder;
+          const displayOrder = displayOrderByVisitId.get(visit.id) ?? visit.routeOrder;
           const icon = leaflet.divIcon({
             className: "route-map-outlet-marker",
             html: markerHtml(String(displayOrder), frequencyColors[visit.frequency]),
@@ -450,7 +450,7 @@ export default function RouteMapPage() {
           const marker = leaflet.marker(position, { icon, title: `${displayOrder}. ${visit.outlet.tenDiemBan}` });
           marker
             .bindPopup(
-              `<strong>${displayOrder}. ${escapeHtml(visit.outlet.tenDiemBan)}</strong><br/>${escapeHtml(visit.outlet.salePhuTrach)} · ${escapeHtml(visit.clusterId)} · ${escapeHtml(visit.frequency)}<br/>Thứ tự trong cụm: #${visit.routeOrder}<br/>${escapeHtml(visit.outlet.diaChi)}<br/>X/Y: ${visit.outlet.toaDoX}, ${visit.outlet.toaDoY}`,
+              `<strong>${displayOrder}. ${escapeHtml(visit.outlet.tenDiemBan)}</strong><br/>${escapeHtml(visit.outlet.salePhuTrach)} · ${escapeHtml(visit.clusterId)} · ${escapeHtml(visit.frequency)}<br/>Thứ tự gốc trong ngày: #${visit.routeOrder}<br/>${escapeHtml(visit.outlet.diaChi)}<br/>X/Y: ${visit.outlet.toaDoX}, ${visit.outlet.toaDoY}`,
             )
             .addTo(map);
           leafletLayersRef.current.push(marker);
@@ -501,7 +501,7 @@ export default function RouteMapPage() {
     return () => {
       cancelled = true;
     };
-  }, [isOverviewMode, isSingleSaleDay, mapMarkerNumberByVisitId, rows, shouldDrawRouteLines, validVisibleStartPoints]);
+  }, [displayOrderByVisitId, isSingleSaleDay, rows, shouldDrawRouteLines, validVisibleStartPoints]);
 
   function saveSelectedStartPoint() {
     const x = Number(startX);
@@ -690,7 +690,7 @@ export default function RouteMapPage() {
                   </g>
                 ))}
                 {points.map(({ visit, point }) => {
-                  const displayOrder = isOverviewMode ? (mapMarkerNumberByVisitId.get(visit.id) ?? visit.routeOrder) : visit.routeOrder;
+                  const displayOrder = displayOrderByVisitId.get(visit.id) ?? visit.routeOrder;
                   return (
                   <g key={visit.id}>
                     <circle cx={point.x} cy={point.y} r="13" fill={frequencyColors[visit.frequency]} opacity="0.18" />
@@ -698,7 +698,7 @@ export default function RouteMapPage() {
                     <text x={point.x} y={point.y - 16} textAnchor="middle" className="fill-slate-900 text-[11px] font-bold">
                       {displayOrder}
                     </text>
-                    <title>{`${visit.routeOrder}. ${visit.outlet.tenDiemBan} · ${visit.outlet.salePhuTrach} · ${visit.clusterId} · ${visit.frequency}`}</title>
+                    <title>{`${displayOrder}. ${visit.outlet.tenDiemBan} · ${visit.outlet.salePhuTrach} · ${visit.clusterId} · ${visit.frequency}`}</title>
                   </g>
                   );
                 })}
@@ -733,7 +733,7 @@ export default function RouteMapPage() {
               </div>
             ) : null}
             {rows.slice(0, 80).map((visit) => {
-              const displayOrder = isOverviewMode ? (mapMarkerNumberByVisitId.get(visit.id) ?? visit.routeOrder) : visit.routeOrder;
+              const displayOrder = displayOrderByVisitId.get(visit.id) ?? visit.routeOrder;
               return (
               <div key={visit.id} className="rounded-md bg-slate-50 p-3 text-sm">
                 <div className="mb-1 flex items-center justify-between gap-2">
