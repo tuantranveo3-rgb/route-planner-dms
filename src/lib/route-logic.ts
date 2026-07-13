@@ -72,6 +72,11 @@ function sameDayClusterThreshold(a: RouteCluster, b: RouteCluster) {
   return 6;
 }
 
+function sameDayOutletThreshold(a: { toaDoX: number; toaDoY: number }, b: { toaDoX: number; toaDoY: number }) {
+  if (looksLikeVietnamLngLat(a) && looksLikeVietnamLngLat(b)) return 0.018;
+  return Number.POSITIVE_INFINITY;
+}
+
 function stableHash(value: string) {
   return [...value].reduce((hash, char) => (hash * 31 + char.charCodeAt(0)) >>> 0, 7);
 }
@@ -216,6 +221,7 @@ export function generateMonthlyRoutePlan(
   const capacityCounter = new Map<string, number>();
   const saleDayCounter = new Map<string, number>();
   const saleDayClusters = new Map<string, Set<string>>();
+  const saleDayOutlets = new Map<string, EnrichedOutlet[]>();
   const outletWeekCounter = new Map<string, number>();
   const f2CounterByCluster = new Map<string, number>();
   const f1CounterByCluster = new Map<string, number>();
@@ -322,7 +328,25 @@ export function generateMonthlyRoutePlan(
     return `cụm ${cluster.maCum} quá xa tuyến đang có trong ngày (${currentClusterIds})`;
   }
 
-  function findSlot(week: WeekKey, cluster: RouteCluster, saleName: string, preferredDayName: string, allowedDays: string[]) {
+  function canAddOutletToSaleDay(saleDayKey: string, outlet: EnrichedOutlet) {
+    const currentOutlets = saleDayOutlets.get(saleDayKey);
+    if (!currentOutlets || currentOutlets.length === 0 || currentOutlets.some((item) => item.outletId === outlet.outletId)) return true;
+    return currentOutlets.every((item) => distanceBetween(item, outlet) <= sameDayOutletThreshold(item, outlet));
+  }
+
+  function rememberOutletOnSaleDay(saleDayKey: string, outlet: EnrichedOutlet) {
+    const currentOutlets = saleDayOutlets.get(saleDayKey) ?? [];
+    if (currentOutlets.some((item) => item.outletId === outlet.outletId)) return;
+    saleDayOutlets.set(saleDayKey, [...currentOutlets, outlet]);
+  }
+
+  function getSaleDayOutletDistanceReason(saleDayKey: string, outlet: EnrichedOutlet) {
+    if (canAddOutletToSaleDay(saleDayKey, outlet)) return "";
+    return `${outlet.tenDiemBan} quá xa các điểm đã có trong ngày`;
+  }
+
+  function findSlot(week: WeekKey, cluster: RouteCluster, outlet: EnrichedOutlet, preferredDayName: string, allowedDays: string[]) {
+    const saleName = outlet.salePhuTrach;
     const capacity = cluster.capacityNgay || settings.defaultDailyCapacity;
     const saleMax = getSaleMax(saleName);
 
@@ -334,7 +358,8 @@ export function generateMonthlyRoutePlan(
       const clusterUsed = capacityCounter.get(clusterKey) ?? 0;
       const saleUsed = saleDayCounter.get(saleDayKey) ?? 0;
       const clusterFitsDayRoute = canAddClusterToSaleDay(saleDayKey, cluster);
-      if (clusterUsed < capacity && saleUsed < saleMax && clusterFitsDayRoute) {
+      const outletFitsDayRoute = canAddOutletToSaleDay(saleDayKey, outlet);
+      if (clusterUsed < capacity && saleUsed < saleMax && clusterFitsDayRoute && outletFitsDayRoute) {
         return {
           dayName,
           plannedDate,
@@ -357,6 +382,7 @@ export function generateMonthlyRoutePlan(
       clusterUsed >= capacity ? `cụm ${cluster.maCum} đã đủ capacity ${capacity}` : "",
       saleUsed >= saleMax ? `${saleName} đã đủ max ${saleMax} điểm/ngày` : "",
       getSaleDayClusterDistanceReason(saleDayKey, cluster),
+      getSaleDayOutletDistanceReason(saleDayKey, outlet),
     ].filter(Boolean);
 
     return {
@@ -369,12 +395,13 @@ export function generateMonthlyRoutePlan(
     };
   }
 
-  function reserveSlot(clusterKey: string, saleDayKey: string, clusterId: string) {
+  function reserveSlot(clusterKey: string, saleDayKey: string, clusterId: string, outlet: EnrichedOutlet) {
     capacityCounter.set(clusterKey, (capacityCounter.get(clusterKey) ?? 0) + 1);
     saleDayCounter.set(saleDayKey, (saleDayCounter.get(saleDayKey) ?? 0) + 1);
     const currentClusters = saleDayClusters.get(saleDayKey) ?? new Set<string>();
     currentClusters.add(clusterId);
     saleDayClusters.set(saleDayKey, currentClusters);
+    rememberOutletOnSaleDay(saleDayKey, outlet);
   }
 
   function getSaleMin(saleName: string) {
@@ -423,7 +450,8 @@ export function generateMonthlyRoutePlan(
               if (group === source) return false;
               if (group.items.length + source.items.length > max) return false;
               if (isSaleUnavailable(saleName, group.plannedDate)) return false;
-              return canAddClusterToSaleDay(`${group.plannedDate}-${saleName}`, sourceCluster);
+              const targetSaleDayKey = `${group.plannedDate}-${saleName}`;
+              return canAddClusterToSaleDay(targetSaleDayKey, sourceCluster) && source.items.every((item) => canAddOutletToSaleDay(targetSaleDayKey, item.outlet));
             })
             .sort((a, b) => {
               const aReady = a.items.length >= min ? 0 : 1;
@@ -450,6 +478,7 @@ export function generateMonthlyRoutePlan(
               const currentClusters = saleDayClusters.get(targetSaleDayKey) ?? new Set<string>();
               currentClusters.add(sourceCluster.maCum);
               saleDayClusters.set(targetSaleDayKey, currentClusters);
+              rememberOutletOnSaleDay(targetSaleDayKey, visit.outlet);
             }
           }
           source.items.length = 0;
@@ -473,10 +502,10 @@ export function generateMonthlyRoutePlan(
     const scheduledDays = getScheduledDays(outlet, cluster);
     const scheduledDayName = scheduledDays[0] ?? cluster.ngayDiCoDinh;
     const targetWeeks: WeekKey[] = outlet.frequency === "F4" || outlet.frequency === "F2" ? ["W1", "W2"] : ["W2", "W3"];
-    const week = targetWeeks.find((candidate) => !findSlot(candidate, cluster, outlet.salePhuTrach, scheduledDayName, scheduledDays).isFull) ?? targetWeeks[0];
-    const slot = findSlot(week, cluster, outlet.salePhuTrach, scheduledDayName, scheduledDays);
+    const week = targetWeeks.find((candidate) => !findSlot(candidate, cluster, outlet, scheduledDayName, scheduledDays).isFull) ?? targetWeeks[0];
+    const slot = findSlot(week, cluster, outlet, scheduledDayName, scheduledDays);
     if (!slot.isFull) {
-      reserveSlot(slot.clusterKey, slot.saleDayKey, cluster.maCum);
+      reserveSlot(slot.clusterKey, slot.saleDayKey, cluster.maCum, outlet);
     }
 
     visits.push({
@@ -517,11 +546,11 @@ export function generateMonthlyRoutePlan(
       outletWeekCounter.set(outletWeekKey, outletWeekSequence);
       const plannedDayName = pickPlannedDayName(scheduledDays, outletWeekSequence);
       const lacksSecondF8Slot = outlet.frequency === "F8" && scheduledDays.length < 2 && outletWeekSequence > 1;
-      const slot = findSlot(week, cluster, outlet.salePhuTrach, plannedDayName, scheduledDays);
+      const slot = findSlot(week, cluster, outlet, plannedDayName, scheduledDays);
       const isRemote = lowFrequencyNotDue || lacksSecondF8Slot || slot.isFull;
 
       if (!isRemote) {
-        reserveSlot(slot.clusterKey, slot.saleDayKey, cluster.maCum);
+        reserveSlot(slot.clusterKey, slot.saleDayKey, cluster.maCum, outlet);
       }
 
       visits.push({

@@ -321,8 +321,8 @@ export default function RouteMapPage() {
   const visibleClusterIds = Array.from(new Set(rows.map((visit) => visit.clusterId)));
   const isMultiClusterOverview = cluster === "all" && visibleClusterIds.length > 1;
   const isSingleSaleDay = sale !== "all" && date !== "all";
-  const isOverviewMode = !isSingleSaleDay && (sale === "all" || cluster === "all");
-  const shouldDrawRouteLines = !isMultiClusterOverview && (isSingleSaleDay || !isOverviewMode);
+  const groupLinesByCluster = cluster === "all";
+  const shouldDrawRouteLines = rows.length > 0 && (date !== "all" || sale !== "all" || cluster !== "all");
   const displayOrderByVisitId = useMemo(() => new Map(rows.map((visit, index) => [visit.id, index + 1])), [rows]);
   const dailyStartBySale = new Map(currentStartPoints.filter((point) => point.date).map((point) => [`${point.date}-${point.salePhuTrach}`, point]));
   const defaultStartBySale = new Map(currentStartPoints.filter((point) => !point.date).map((point) => [point.salePhuTrach, point]));
@@ -346,8 +346,11 @@ export default function RouteMapPage() {
 
   if (shouldDrawRouteLines) {
     for (const item of points) {
-      const key = isSingleSaleDay ? `${item.visit.plannedDate}-${item.visit.outlet.salePhuTrach}` : `${item.visit.plannedDate}-${item.visit.outlet.salePhuTrach}-${item.visit.clusterId}`;
+      const key = groupLinesByCluster
+        ? `${item.visit.plannedDate}-${item.visit.outlet.salePhuTrach}-${item.visit.clusterId}`
+        : `${item.visit.plannedDate}-${item.visit.outlet.salePhuTrach}`;
       const current = lineGroups.get(key) ?? (() => {
+        if (groupLinesByCluster) return "";
         const startPoint = dailyStartPointBySale.get(`${item.visit.plannedDate}-${item.visit.outlet.salePhuTrach}`) ?? defaultStartPointBySale.get(item.visit.outlet.salePhuTrach);
         return startPoint ? `${startPoint.x},${startPoint.y}` : "";
       })();
@@ -465,12 +468,12 @@ export default function RouteMapPage() {
               a.visit.routeOrder - b.visit.routeOrder,
           );
           for (const { visit, position } of sortedPositions) {
-            const key = isSingleSaleDay ? `${visit.plannedDate}-${visit.outlet.salePhuTrach}` : `${visit.plannedDate}-${visit.outlet.salePhuTrach}-${visit.clusterId}`;
+            const key = groupLinesByCluster ? `${visit.plannedDate}-${visit.outlet.salePhuTrach}-${visit.clusterId}` : `${visit.plannedDate}-${visit.outlet.salePhuTrach}`;
             if (!routeGroups.has(key)) {
               const start =
                 startPositions.find((item) => item.start.salePhuTrach === visit.outlet.salePhuTrach && item.start.date === visit.plannedDate) ??
                 startPositions.find((item) => item.start.salePhuTrach === visit.outlet.salePhuTrach && !item.start.date);
-              routeGroups.set(key, start ? [start.position] : []);
+              routeGroups.set(key, !groupLinesByCluster && start ? [start.position] : []);
             }
             routeGroups.get(key)?.push(position);
           }
@@ -501,7 +504,7 @@ export default function RouteMapPage() {
     return () => {
       cancelled = true;
     };
-  }, [displayOrderByVisitId, isSingleSaleDay, rows, shouldDrawRouteLines, validVisibleStartPoints]);
+  }, [displayOrderByVisitId, groupLinesByCluster, rows, shouldDrawRouteLines, validVisibleStartPoints]);
 
   function saveSelectedStartPoint() {
     const x = Number(startX);
@@ -658,8 +661,13 @@ export default function RouteMapPage() {
             <div className="font-bold text-ink">{useStreetMap ? "OpenStreetMap tuyến bán hàng" : "Sơ đồ tuyến nội bộ"}</div>
             <div className="text-sm text-muted">{mapStatus}</div>
             {isMultiClusterOverview ? (
-              <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">
+              <div className="hidden">
                 Đang xem {isMultiClusterOverview ? "nhiều cụm" : "tổng quan"} cùng lúc. App đang ẩn đường nối để tránh hiểu nhầm là một tuyến; chọn một cụm cụ thể để xem thứ tự đi trong ngày rõ nhất.
+              </div>
+            ) : null}
+            {isMultiClusterOverview ? (
+              <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">
+                Đang xem nhiều cụm cùng lúc. App chỉ nối đường trong từng cụm để tránh hiểu nhầm là một tuyến dài; chọn một cụm cụ thể để xem tuyến đầy đủ từ #0 trong ngày.
               </div>
             ) : null}
           </div>

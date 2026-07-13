@@ -201,6 +201,40 @@ describe("route logic", () => {
     expect(plan.some((visit) => visit.status.startsWith("CS") && visit.warning?.includes("quá xa"))).toBe(true);
   });
 
+  it("does not place far real-coordinate outlets into the same sale day even inside one cluster", () => {
+    const saleName = "Sale Far Outlet";
+    const realClusters: RouteCluster[] = [
+      { maCum: "REAL-C", tenCum: "Khu C", quanHuyen: "Gò Vấp", danhSachPhuongXa: ["C"], ngayDiCoDinh: "Thứ 2", capacityNgay: 18, toaDoTamX: 106.67, toaDoTamY: 10.82 },
+    ];
+    const outlets: Outlet[] = [
+      { ...strongOutlet, outletId: "REAL-C-1", cumNho: "REAL-C", salePhuTrach: saleName, ghiNhanF: "F4", toaDoX: 106.6605, toaDoY: 10.8205 },
+      { ...strongOutlet, outletId: "REAL-C-2", cumNho: "REAL-C", salePhuTrach: saleName, ghiNhanF: "F4", toaDoX: 106.7005, toaDoY: 10.8205 },
+    ];
+    const territories = [
+      {
+        salePhuTrach: saleName,
+        khuVucPhuTrach: ["Gò Vấp"],
+        cumNhoPhuTrach: ["REAL-C"],
+        saleBackup: "",
+        ngayDiUuTien: ["Thứ 2"],
+        lichTheoNgay: [{ dayName: "Thứ 2", clusterIds: ["REAL-C"] }],
+        minVisitsPerDay: 1,
+        maxVisitsPerDay: 15,
+        ghiChu: "",
+      },
+    ];
+    const plan = generateMonthlyRoutePlan(7, 2026, outlets, realClusters, undefined, [], [], territories);
+
+    const directVisitsBySaleDay = new Map<string, number>();
+    for (const visit of plan.filter((item) => !item.status.startsWith("CS"))) {
+      const key = `${visit.plannedDate}-${visit.outlet.salePhuTrach}`;
+      directVisitsBySaleDay.set(key, (directVisitsBySaleDay.get(key) ?? 0) + 1);
+    }
+
+    expect([...directVisitsBySaleDay.values()].every((count) => count === 1)).toBe(true);
+    expect(plan.some((visit) => visit.status.startsWith("CS") && visit.warning?.includes("quá xa"))).toBe(true);
+  });
+
   it("assigns a unique daily route order for each sale day while keeping cluster assignment", () => {
     const outlets: Outlet[] = [
       { ...strongOutlet, outletId: "CL-A-1", cumNho: "Q1-A", salePhuTrach: "Sale Cluster", ghiNhanF: "F4", toaDoX: 106.7001, toaDoY: 10.781 },
