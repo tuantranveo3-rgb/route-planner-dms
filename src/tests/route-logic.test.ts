@@ -137,7 +137,8 @@ describe("route logic", () => {
     }
 
     expect(Math.max(...countsByDate.values())).toBeLessThanOrEqual(15);
-    expect(plan.some((visit) => visit.status.startsWith("CS") && visit.warning?.includes("max"))).toBe(true);
+    expect(weekOneVisits).toHaveLength(16);
+    expect(weekOneVisits.some((visit) => visit.warning?.includes("Tự dời"))).toBe(true);
   });
 
   it("does not mix distant clusters into one sale day route", () => {
@@ -168,7 +169,8 @@ describe("route logic", () => {
     }
 
     expect([...directClustersByDate.values()].every((clusterIds) => clusterIds.size === 1)).toBe(true);
-    expect(plan.some((visit) => visit.status.startsWith("CS") && visit.warning?.includes("quá xa"))).toBe(true);
+    expect(plan.filter((visit) => !visit.status.startsWith("CS"))).toHaveLength(2);
+    expect(plan.some((visit) => visit.warning?.includes("Tự dời"))).toBe(true);
   });
 
   it("keeps real-coordinate clusters apart when they are several kilometers away", () => {
@@ -197,8 +199,9 @@ describe("route logic", () => {
     const plan = generateMonthlyRoutePlan(7, 2026, outlets, realClusters, undefined, [], [], territories);
     const directVisits = plan.filter((visit) => !visit.status.startsWith("CS"));
 
-    expect(new Set(directVisits.map((visit) => `${visit.plannedDate}-${visit.outlet.salePhuTrach}-${visit.clusterId}`)).size).toBe(1);
-    expect(plan.some((visit) => visit.status.startsWith("CS") && visit.warning?.includes("quá xa"))).toBe(true);
+    expect(directVisits).toHaveLength(2);
+    expect(new Set(directVisits.map((visit) => `${visit.plannedDate}-${visit.outlet.salePhuTrach}`)).size).toBe(2);
+    expect(plan.some((visit) => visit.warning?.includes("Tự dời"))).toBe(true);
   });
 
   it("does not place far real-coordinate outlets into the same sale day even inside one cluster", () => {
@@ -232,7 +235,8 @@ describe("route logic", () => {
     }
 
     expect([...directVisitsBySaleDay.values()].every((count) => count === 1)).toBe(true);
-    expect(plan.some((visit) => visit.status.startsWith("CS") && visit.warning?.includes("quá xa"))).toBe(true);
+    expect(plan.every((visit) => !visit.status.startsWith("CS"))).toBe(true);
+    expect(plan.some((visit) => visit.warning?.includes("Tự dời"))).toBe(true);
   });
 
   it("assigns a unique daily route order for each sale day while keeping cluster assignment", () => {
@@ -449,8 +453,9 @@ describe("route logic", () => {
     ]);
 
     expect(plan).toHaveLength(1);
-    expect(plan[0].status.startsWith("CS")).toBe(true);
-    expect(plan[0].warning).toContain("không đi tuyến");
+    expect(plan[0].status.startsWith("CS")).toBe(false);
+    expect(plan[0].dayName).not.toBe("Thứ 2");
+    expect(plan[0].warning).toContain("Tự dời");
   });
 
   it("builds carryover items from missed execution records and injects them into next month", () => {

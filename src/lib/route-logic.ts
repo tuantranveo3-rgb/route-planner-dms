@@ -304,11 +304,19 @@ export function generateMonthlyRoutePlan(
 
   function candidateDays(preferredDayName: string, allowedDays: string[]) {
     const preferredIndex = dayIndexByName[preferredDayName] ?? 1;
-    return [...new Set(allowedDays.length ? allowedDays : workingDayNames)].sort((a, b) => {
+    const priorityDays = [...new Set(allowedDays.length ? allowedDays : [preferredDayName])].sort((a, b) => {
       const distanceA = Math.abs((dayIndexByName[a] ?? 1) - preferredIndex);
       const distanceB = Math.abs((dayIndexByName[b] ?? 1) - preferredIndex);
       return distanceA - distanceB || (dayIndexByName[a] ?? 1) - (dayIndexByName[b] ?? 1);
     });
+    const fallbackDays = workingDayNames
+      .filter((dayName) => !priorityDays.includes(dayName))
+      .sort((a, b) => {
+        const distanceA = Math.abs((dayIndexByName[a] ?? 1) - preferredIndex);
+        const distanceB = Math.abs((dayIndexByName[b] ?? 1) - preferredIndex);
+        return distanceA - distanceB || (dayIndexByName[a] ?? 1) - (dayIndexByName[b] ?? 1);
+      });
+    return [...priorityDays, ...fallbackDays];
   }
 
   function canAddClusterToSaleDay(saleDayKey: string, cluster: RouteCluster) {
@@ -365,7 +373,7 @@ export function generateMonthlyRoutePlan(
           plannedDate,
           clusterKey,
           saleDayKey,
-          warning: dayName === preferredDayName ? undefined : `Tự dời từ ${preferredDayName} sang ${dayName} để không vượt max ${saleMax} điểm/ngày.`,
+          warning: dayName === preferredDayName ? undefined : `Tự dời từ ${preferredDayName} sang ${dayName} vì ngày ưu tiên bị đầy, sale nghỉ hoặc tuyến quá xa.`,
           isFull: false,
         };
       }

@@ -321,7 +321,7 @@ export default function RouteMapPage() {
   const visibleClusterIds = Array.from(new Set(rows.map((visit) => visit.clusterId)));
   const isMultiClusterOverview = cluster === "all" && visibleClusterIds.length > 1;
   const isSingleSaleDay = sale !== "all" && date !== "all";
-  const groupLinesByCluster = cluster === "all";
+  const groupLinesByCluster = cluster === "all" && !isSingleSaleDay;
   const shouldDrawRouteLines = rows.length > 0 && (date !== "all" || sale !== "all" || cluster !== "all");
   const displayOrderByVisitId = useMemo(() => new Map(rows.map((visit, index) => [visit.id, index + 1])), [rows]);
   const dailyStartBySale = new Map(currentStartPoints.filter((point) => point.date).map((point) => [`${point.date}-${point.salePhuTrach}`, point]));
