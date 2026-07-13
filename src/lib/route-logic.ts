@@ -615,11 +615,97 @@ function orderVisitsFromStart(group: RouteVisit[], startPoint?: { toaDoX: number
     cursor = { toaDoX: next.outlet.toaDoX, toaDoY: next.outlet.toaDoY };
   }
 
-  return improveOpenRouteWithTwoOpt(ordered, routeStart);
+  return choosePracticalOpenRoute(group, improveOpenRouteWithTwoOpt(ordered, routeStart), routeStart);
 }
 
 function visitPoint(visit: RouteVisit) {
   return { toaDoX: visit.outlet.toaDoX, toaDoY: visit.outlet.toaDoY };
+}
+
+function getRouteDirection(route: RouteVisit[], startPoint: { toaDoX: number; toaDoY: number }) {
+  const centroid = route.reduce(
+    (sum, visit) => {
+      const point = visitPoint(visit);
+      return { toaDoX: sum.toaDoX + point.toaDoX, toaDoY: sum.toaDoY + point.toaDoY };
+    },
+    { toaDoX: 0, toaDoY: 0 },
+  );
+  const center = { toaDoX: centroid.toaDoX / route.length, toaDoY: centroid.toaDoY / route.length };
+  let dx = center.toaDoX - startPoint.toaDoX;
+  let dy = center.toaDoY - startPoint.toaDoY;
+  let length = Math.hypot(dx, dy);
+
+  if (length < 0.000001) {
+    const farthest = [...route].sort((a, b) => distanceBetween(startPoint, visitPoint(b)) - distanceBetween(startPoint, visitPoint(a)))[0];
+    const point = visitPoint(farthest);
+    dx = point.toaDoX - startPoint.toaDoX;
+    dy = point.toaDoY - startPoint.toaDoY;
+    length = Math.hypot(dx, dy) || 1;
+  }
+
+  return { x: dx / length, y: dy / length };
+}
+
+function projectedDistance(point: { toaDoX: number; toaDoY: number }, startPoint: { toaDoX: number; toaDoY: number }, direction: { x: number; y: number }) {
+  return (point.toaDoX - startPoint.toaDoX) * direction.x + (point.toaDoY - startPoint.toaDoY) * direction.y;
+}
+
+function perpendicularDistance(point: { toaDoX: number; toaDoY: number }, startPoint: { toaDoX: number; toaDoY: number }, direction: { x: number; y: number }) {
+  return -(point.toaDoX - startPoint.toaDoX) * direction.y + (point.toaDoY - startPoint.toaDoY) * direction.x;
+}
+
+function orderByDirectionalSweep(route: RouteVisit[], startPoint: { toaDoX: number; toaDoY: number }, sideDirection: 1 | -1) {
+  const direction = getRouteDirection(route, startPoint);
+  return [...route].sort((a, b) => {
+    const pointA = visitPoint(a);
+    const pointB = visitPoint(b);
+    const projectionDiff = projectedDistance(pointA, startPoint, direction) - projectedDistance(pointB, startPoint, direction);
+    if (Math.abs(projectionDiff) > 0.000001) return projectionDiff;
+    const sideDiff = perpendicularDistance(pointA, startPoint, direction) - perpendicularDistance(pointB, startPoint, direction);
+    if (Math.abs(sideDiff) > 0.000001) return sideDirection * sideDiff;
+    return distanceBetween(startPoint, pointA) - distanceBetween(startPoint, pointB);
+  });
+}
+
+function practicalRouteScore(route: RouteVisit[], startPoint: { toaDoX: number; toaDoY: number }) {
+  const direction = getRouteDirection(route, startPoint);
+  let totalDistance = 0;
+  let backtrackDistance = 0;
+  let turnPenalty = 0;
+  let cursor = startPoint;
+  let previousProjection = 0;
+  let previousVector: { x: number; y: number; length: number } | undefined;
+
+  for (const visit of route) {
+    const point = visitPoint(visit);
+    const segmentLength = distanceBetween(cursor, point);
+    const projection = projectedDistance(point, startPoint, direction);
+    totalDistance += segmentLength;
+    if (projection < previousProjection) backtrackDistance += previousProjection - projection;
+
+    const vector = { x: point.toaDoX - cursor.toaDoX, y: point.toaDoY - cursor.toaDoY, length: segmentLength };
+    if (previousVector && previousVector.length > 0.000001 && vector.length > 0.000001) {
+      const cosine = (previousVector.x * vector.x + previousVector.y * vector.y) / (previousVector.length * vector.length);
+      turnPenalty += Math.max(0, 1 - Math.max(-1, Math.min(1, cosine))) * Math.min(previousVector.length, vector.length);
+    }
+
+    previousProjection = projection;
+    previousVector = vector;
+    cursor = point;
+  }
+
+  return totalDistance + backtrackDistance * 5 + turnPenalty * 0.6;
+}
+
+function choosePracticalOpenRoute(originalRoute: RouteVisit[], optimizedRoute: RouteVisit[], startPoint: { toaDoX: number; toaDoY: number }) {
+  if (optimizedRoute.length < 5) return optimizedRoute;
+  const candidates = [
+    optimizedRoute,
+    improveOpenRouteWithTwoOpt(orderByDirectionalSweep(originalRoute, startPoint, 1), startPoint),
+    improveOpenRouteWithTwoOpt(orderByDirectionalSweep(originalRoute, startPoint, -1), startPoint),
+  ];
+
+  return candidates.sort((a, b) => practicalRouteScore(a, startPoint) - practicalRouteScore(b, startPoint))[0];
 }
 
 function improveOpenRouteWithTwoOpt(route: RouteVisit[], startPoint: { toaDoX: number; toaDoY: number }): RouteVisit[] {
