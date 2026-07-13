@@ -58,7 +58,7 @@ describe("route logic", () => {
     expect(calculateMonthlyVisits("F2")).toBe(2);
     expect(calculateMonthlyVisits("F1")).toBe(1);
     expect(calculateMonthlyVisits("F0.5")).toBe(0.5);
-    expect(calculateMonthlyVisits("F0.3")).toBe(0.3);
+    expect(calculateMonthlyVisits("F0.3")).toBeCloseTo(1 / 3);
   });
 
   it("calculateDistanceScore starts from zero for very far outlets", () => {
@@ -516,6 +516,38 @@ describe("route logic", () => {
     expect(remoteMonth).toBeDefined();
     expect(remoteMonth?.[0].frequency).toBe("F0.3");
     expect(remoteMonth?.[0].warning).toContain("chưa tới chu kỳ");
+  });
+
+  it("schedules F0.5 exactly once across two months and F0.3 exactly once across three months", () => {
+    const f05Outlet: Outlet = { ...strongOutlet, outletId: "LOW-F05-CYCLE", ghiNhanF: "F0.5", salePhuTrach: "Sale Low Cycle" };
+    const f03Outlet: Outlet = { ...strongOutlet, outletId: "LOW-F03-CYCLE", ghiNhanF: "F0.3", salePhuTrach: "Sale Low Cycle" };
+    const f05Plans = [1, 2].flatMap((month) => generateMonthlyRoutePlan(month, 2026, [f05Outlet], clusters));
+    const f03Plans = [1, 2, 3].flatMap((month) => generateMonthlyRoutePlan(month, 2026, [f03Outlet], clusters));
+
+    expect(f05Plans.filter((visit) => !visit.status.startsWith("CS"))).toHaveLength(1);
+    expect(f05Plans.filter((visit) => visit.status.startsWith("CS"))).toHaveLength(1);
+    expect(f03Plans.filter((visit) => !visit.status.startsWith("CS"))).toHaveLength(1);
+    expect(f03Plans.filter((visit) => visit.status.startsWith("CS"))).toHaveLength(2);
+  });
+
+  it("does not miss low-frequency outlets when scanning a full F0.5/F0.3 cycle", () => {
+    const f05Outlets: Outlet[] = Array.from({ length: 20 }, (_, index) => ({
+      ...strongOutlet,
+      outletId: `BATCH-F05-${index}`,
+      salePhuTrach: "Sale Batch Low",
+      ghiNhanF: "F0.5",
+    }));
+    const f03Outlets: Outlet[] = Array.from({ length: 30 }, (_, index) => ({
+      ...strongOutlet,
+      outletId: `BATCH-F03-${index}`,
+      salePhuTrach: "Sale Batch Low",
+      ghiNhanF: "F0.3",
+    }));
+    const f05Cycle = [1, 2].flatMap((month) => generateMonthlyRoutePlan(month, 2026, f05Outlets, clusters));
+    const f03Cycle = [1, 2, 3].flatMap((month) => generateMonthlyRoutePlan(month, 2026, f03Outlets, clusters));
+
+    expect(f05Cycle.filter((visit) => !visit.status.startsWith("CS"))).toHaveLength(f05Outlets.length);
+    expect(f03Cycle.filter((visit) => !visit.status.startsWith("CS"))).toHaveLength(f03Outlets.length);
   });
 
   it("summarizeExecution reports completed and missed visits", () => {

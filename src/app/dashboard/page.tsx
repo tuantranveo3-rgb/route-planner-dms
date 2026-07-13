@@ -104,7 +104,7 @@ export default function DashboardPage() {
 
       <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <MetricCard label="Tổng điểm bán" value={outlets.length} hint="Dữ liệu import hiện tại" />
-        <MetricCard label="Tổng lượt ghé/tháng" value={formatNumber(monthlyVisits)} hint="F8=8, F4=4, F2=2, F1=1, F0.5/F0.3 linh hoạt" />
+        <MetricCard label="Tổng lượt ghé/tháng" value={formatNumber(monthlyVisits)} hint="F8=8, F4=4, F2=2, F1=1, F0.5=1/2 tháng, F0.3=1/3 tháng" />
         <MetricCard label="Lượt ghé/ngày bình quân" value={formatNumber(averageDailyVisits)} hint={`${DEFAULT_SETTINGS.workingDaysPerMonth} ngày làm việc/tháng`} />
         <MetricCard label="Cảnh báo sale/ngày" value={saleWarningItems.length} hint="Theo min/max riêng từng sale" />
         <MetricCard label="Cụm quá tải" value={overloaded.length} hint="Theo capacity cụm/ngày" />

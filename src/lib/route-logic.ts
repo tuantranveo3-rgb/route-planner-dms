@@ -127,7 +127,7 @@ export function calculateMonthlyVisits(frequency: Frequency): number {
   if (frequency === "F2") return 2;
   if (frequency === "F1") return 1;
   if (frequency === "F0.5") return 0.5;
-  return 0.3;
+  return 1 / 3;
 }
 
 export function calculateOutletScore(outlet: Outlet, settings: PlannerSettings = DEFAULT_SETTINGS): OutletScore {
