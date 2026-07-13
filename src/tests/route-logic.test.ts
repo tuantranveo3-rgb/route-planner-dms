@@ -223,6 +223,36 @@ describe("route logic", () => {
     expect(weekOne.map((visit) => visit.outlet.outletId)).toEqual(["ROUTE-NEAR", "ROUTE-MID", "ROUTE-FAR"]);
   });
 
+  it("smooths a zigzag daily route after the nearest-neighbor draft", () => {
+    const routePoints = [
+      { outletId: "SMOOTH-1", toaDoX: 0, toaDoY: 6 },
+      { outletId: "SMOOTH-2", toaDoX: 4, toaDoY: 4 },
+      { outletId: "SMOOTH-3", toaDoX: 4, toaDoY: 9 },
+      { outletId: "SMOOTH-4", toaDoX: 3, toaDoY: 3 },
+      { outletId: "SMOOTH-5", toaDoX: 3, toaDoY: 2 },
+      { outletId: "SMOOTH-6", toaDoX: 4, toaDoY: 0 },
+    ];
+    const outlets: Outlet[] = routePoints.map((point) => ({
+      ...strongOutlet,
+      ...point,
+      salePhuTrach: "Sale Smooth",
+      ghiNhanF: "F4",
+    }));
+    const plan = generateMonthlyRoutePlan(7, 2026, outlets, clusters, undefined, [], [
+      {
+        salePhuTrach: "Sale Smooth",
+        tenDiemXuatPhat: "Van phong",
+        loaiDiem: "Văn phòng",
+        toaDoX: 0,
+        toaDoY: 0,
+        ghiChu: "",
+      },
+    ]);
+    const weekOne = plan.filter((visit) => visit.week === "W1" && !visit.status.startsWith("CS")).sort((a, b) => a.routeOrder - b.routeOrder);
+
+    expect(weekOne.map((visit) => visit.outlet.outletId)).toEqual(["SMOOTH-6", "SMOOTH-5", "SMOOTH-4", "SMOOTH-2", "SMOOTH-1", "SMOOTH-3"]);
+  });
+
   it("auto-spreads imported sale clusters when no territory day plan exists", () => {
     const outlets: Outlet[] = [
       { ...strongOutlet, outletId: "AUTO-A", cumNho: "Q1-A", salePhuTrach: "Sale Import", ghiNhanF: "F1" },

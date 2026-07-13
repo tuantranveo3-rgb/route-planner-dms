@@ -598,7 +598,8 @@ function toDateInputValue(date: Date): string {
 function orderVisitsFromStart(group: RouteVisit[], startPoint?: { toaDoX: number; toaDoY: number }): RouteVisit[] {
   const remaining = [...group];
   const ordered: RouteVisit[] = [];
-  let cursor = startPoint ? { toaDoX: startPoint.toaDoX, toaDoY: startPoint.toaDoY } : { toaDoX: group[0].outlet.toaDoX, toaDoY: group[0].outlet.toaDoY };
+  const routeStart = startPoint ? { toaDoX: startPoint.toaDoX, toaDoY: startPoint.toaDoY } : { toaDoX: group[0].outlet.toaDoX, toaDoY: group[0].outlet.toaDoY };
+  let cursor = routeStart;
 
   while (remaining.length) {
     remaining.sort((a, b) => {
@@ -614,7 +615,41 @@ function orderVisitsFromStart(group: RouteVisit[], startPoint?: { toaDoX: number
     cursor = { toaDoX: next.outlet.toaDoX, toaDoY: next.outlet.toaDoY };
   }
 
-  return ordered;
+  return improveOpenRouteWithTwoOpt(ordered, routeStart);
+}
+
+function visitPoint(visit: RouteVisit) {
+  return { toaDoX: visit.outlet.toaDoX, toaDoY: visit.outlet.toaDoY };
+}
+
+function improveOpenRouteWithTwoOpt(route: RouteVisit[], startPoint: { toaDoX: number; toaDoY: number }): RouteVisit[] {
+  if (route.length < 4) return route;
+  const improved = [...route];
+  let changed = true;
+  let passes = 0;
+
+  while (changed && passes < 80) {
+    changed = false;
+    passes += 1;
+
+    for (let start = 0; start < improved.length - 1; start += 1) {
+      for (let end = start + 1; end < improved.length; end += 1) {
+        const beforeSegment = start === 0 ? startPoint : visitPoint(improved[start - 1]);
+        const first = visitPoint(improved[start]);
+        const last = visitPoint(improved[end]);
+        const afterSegment = end + 1 < improved.length ? visitPoint(improved[end + 1]) : undefined;
+        const currentDistance = distanceBetween(beforeSegment, first) + (afterSegment ? distanceBetween(last, afterSegment) : 0);
+        const candidateDistance = distanceBetween(beforeSegment, last) + (afterSegment ? distanceBetween(first, afterSegment) : 0);
+
+        if (candidateDistance + 0.000001 < currentDistance) {
+          improved.splice(start, end - start + 1, ...improved.slice(start, end + 1).reverse());
+          changed = true;
+        }
+      }
+    }
+  }
+
+  return improved;
 }
 
 function getClusterCenter(group: RouteVisit[], cluster?: RouteCluster) {
