@@ -357,8 +357,9 @@ export function generateMonthlyRoutePlan(
     const saleName = outlet.salePhuTrach;
     const capacity = cluster.capacityNgay || settings.defaultDailyCapacity;
     const saleMax = getSaleMax(saleName);
+    const orderedCandidateDays = candidateDays(preferredDayName, allowedDays);
 
-    for (const dayName of candidateDays(preferredDayName, allowedDays)) {
+    for (const dayName of orderedCandidateDays) {
       const clusterKey = `${week}-${cluster.maCum}-${dayName}`;
       const plannedDate = getPlannedDate(year, month, week, dayName);
       if (isSaleUnavailable(saleName, plannedDate)) continue;
@@ -374,6 +375,29 @@ export function generateMonthlyRoutePlan(
           clusterKey,
           saleDayKey,
           warning: dayName === preferredDayName ? undefined : `Tự dời từ ${preferredDayName} sang ${dayName} vì ngày ưu tiên bị đầy, sale nghỉ hoặc tuyến quá xa.`,
+          isFull: false,
+        };
+      }
+    }
+
+    for (const dayName of orderedCandidateDays) {
+      const clusterKey = `${week}-${cluster.maCum}-${dayName}`;
+      const plannedDate = getPlannedDate(year, month, week, dayName);
+      if (isSaleUnavailable(saleName, plannedDate)) continue;
+      const saleDayKey = `${plannedDate}-${saleName}`;
+      const clusterUsed = capacityCounter.get(clusterKey) ?? 0;
+      const saleUsed = saleDayCounter.get(saleDayKey) ?? 0;
+      const clusterFitsDayRoute = canAddClusterToSaleDay(saleDayKey, cluster);
+      if (clusterUsed < capacity && saleUsed < saleMax && clusterFitsDayRoute) {
+        return {
+          dayName,
+          plannedDate,
+          clusterKey,
+          saleDayKey,
+          warning:
+            dayName === preferredDayName
+              ? `Tuyến có điểm xa trong cùng ngày, cần kiểm tra thực địa hoặc tách cụm nếu sale chạy không hợp lý.`
+              : `Tự dời từ ${preferredDayName} sang ${dayName}; tuyến còn điểm xa nên cần kiểm tra thực địa hoặc tách cụm.`,
           isFull: false,
         };
       }

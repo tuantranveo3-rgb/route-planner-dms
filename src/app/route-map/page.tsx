@@ -318,6 +318,13 @@ export default function RouteMapPage() {
     .filter((visit) => cluster === "all" || visit.clusterId === cluster)
     .filter((visit) => frequency === "all" || visit.frequency === frequency)
     .sort((a, b) => a.plannedDate.localeCompare(b.plannedDate) || a.outlet.salePhuTrach.localeCompare(b.outlet.salePhuTrach) || a.routeOrder - b.routeOrder);
+  const monthFilteredPlan = plan
+    .filter((visit) => week === "all" || visit.week === week)
+    .filter((visit) => sale === "all" || visit.outlet.salePhuTrach === sale)
+    .filter((visit) => cluster === "all" || visit.clusterId === cluster)
+    .filter((visit) => frequency === "all" || visit.frequency === frequency);
+  const monthDirectCount = monthFilteredPlan.filter((visit) => !visit.status.startsWith("CS")).length;
+  const monthRemoteCount = monthFilteredPlan.length - monthDirectCount;
   const visibleClusterIds = Array.from(new Set(rows.map((visit) => visit.clusterId)));
   const isMultiClusterOverview = cluster === "all" && visibleClusterIds.length > 1;
   const isSingleSaleDay = sale !== "all" && date !== "all";
@@ -653,6 +660,24 @@ export default function RouteMapPage() {
           <option value="F0.5">F0.5</option>
           <option value="F0.3">F0.3</option>
         </select>
+      </div>
+
+      <div className="mb-4 grid gap-3 md:grid-cols-3">
+        <div className="rounded-lg border border-line bg-white p-3 shadow-soft">
+          <div className="text-xs font-bold uppercase text-muted">Lượt trực tiếp trong tháng</div>
+          <div className="mt-1 text-2xl font-black text-ink">{monthDirectCount}</div>
+          <div className="text-xs text-muted">Theo sale/cụm/F đang lọc, không tính CS từ xa.</div>
+        </div>
+        <div className="rounded-lg border border-line bg-white p-3 shadow-soft">
+          <div className="text-xs font-bold uppercase text-muted">Đang hiện trên bản đồ</div>
+          <div className="mt-1 text-2xl font-black text-ink">{rows.length}</div>
+          <div className="text-xs text-muted">{date === "all" ? "Tất cả ngày đang lọc." : "Chỉ riêng ngày đang chọn."}</div>
+        </div>
+        <div className="rounded-lg border border-line bg-white p-3 shadow-soft">
+          <div className="text-xs font-bold uppercase text-muted">CS/từ xa hoặc chưa tới chu kỳ</div>
+          <div className="mt-1 text-2xl font-black text-ink">{monthRemoteCount}</div>
+          <div className="text-xs text-muted">Thường là F0.5/F0.3 chưa tới tháng đi hoặc quá tải thật.</div>
+        </div>
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
