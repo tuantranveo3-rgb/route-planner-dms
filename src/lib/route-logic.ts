@@ -476,6 +476,58 @@ export function generateMonthlyRoutePlan(
     };
   }
 
+  function findQuotaFillSlot(weekCandidates: WeekKey[], cluster: RouteCluster, outlet: EnrichedOutlet, preferredDayName: string, allowedDays: string[]) {
+    const saleName = outlet.salePhuTrach;
+    const capacity = cluster.capacityNgay || settings.defaultDailyCapacity;
+    const saleMax = getSaleMax(saleName);
+    const candidates: Array<ReturnType<typeof findSlot> & { week: WeekKey; score: number[] }> = [];
+
+    for (const week of weekCandidates) {
+      for (const dayName of candidateDays(preferredDayName, allowedDays)) {
+        const plannedDate = getPlannedDate(year, month, week, dayName);
+        if (!plannedDate || isSaleUnavailable(saleName, plannedDate)) continue;
+        const clusterKey = `${week}-${cluster.maCum}-${dayName}`;
+        const saleDayKey = `${plannedDate}-${saleName}`;
+        const clusterUsed = capacityCounter.get(clusterKey) ?? 0;
+        const saleUsed = saleDayCounter.get(saleDayKey) ?? 0;
+        if (clusterUsed >= capacity || saleUsed >= saleMax) continue;
+
+        const currentClusters = saleDayClusters.get(saleDayKey);
+        const sameCluster = currentClusters?.has(cluster.maCum) ? 0 : 1;
+        const emptyDay = !currentClusters || currentClusters.size === 0 ? 0 : 1;
+        const clusterRoutePenalty = canAddClusterToSaleDay(saleDayKey, cluster) ? 0 : 1;
+        const outletRoutePenalty = canAddOutletToSaleDay(saleDayKey, outlet) ? 0 : 1;
+        const dayDistance = Math.abs((dayIndexByName[dayName] ?? 1) - (dayIndexByName[preferredDayName] ?? 1));
+
+        candidates.push({
+          week,
+          dayName,
+          plannedDate,
+          clusterKey,
+          saleDayKey,
+          warning:
+            clusterRoutePenalty || outletRoutePenalty
+              ? `Xếp để đủ quota ${outlet.frequency} trong tháng; tuyến có điểm/cụm xa, nên tách nhánh hoặc kiểm tra lại cụm nhỏ khi giao sale.`
+              : dayName === preferredDayName
+                ? undefined
+                : `Tự dời từ ${preferredDayName} sang ${dayName} để đủ quota ${outlet.frequency} trong tháng.`,
+          isFull: false,
+          score: [clusterRoutePenalty + outletRoutePenalty, sameCluster, emptyDay, saleUsed, dayDistance, weeks.indexOf(week)],
+        });
+      }
+    }
+
+    const best = candidates.sort((a, b) => {
+      for (let index = 0; index < a.score.length; index += 1) {
+        const diff = a.score[index] - b.score[index];
+        if (diff !== 0) return diff;
+      }
+      return a.plannedDate.localeCompare(b.plannedDate);
+    })[0];
+
+    return best ?? { ...findSlot(weekCandidates[0] ?? "W4", cluster, outlet, preferredDayName, allowedDays), week: weekCandidates[0] ?? "W4" };
+  }
+
   function reserveSlot(clusterKey: string, saleDayKey: string, clusterId: string, outlet: EnrichedOutlet) {
     capacityCounter.set(clusterKey, (capacityCounter.get(clusterKey) ?? 0) + 1);
     saleDayCounter.set(saleDayKey, (saleDayCounter.get(saleDayKey) ?? 0) + 1);
@@ -631,7 +683,9 @@ export function generateMonthlyRoutePlan(
       const preferredDayName = pickPlannedDayName(scheduledDays, stableHash(outlet.outletId) + 1);
       const candidateWeeks = lowFrequencyNotDue ? targetWeeks : rotateWeeks(`${outlet.salePhuTrach}-${outlet.frequency}-${outlet.outletId}`);
       const selectedWeek = candidateWeeks.find((week) => !findSlot(week, cluster, outlet, preferredDayName, scheduledDays).isFull) ?? candidateWeeks[0] ?? "W4";
-      const slot = findSlot(selectedWeek, cluster, outlet, preferredDayName, scheduledDays);
+      const strictSlot = findSlot(selectedWeek, cluster, outlet, preferredDayName, scheduledDays);
+      const quotaSlot = !lowFrequencyNotDue && strictSlot.isFull ? findQuotaFillSlot(candidateWeeks, cluster, outlet, preferredDayName, scheduledDays) : { ...strictSlot, week: selectedWeek };
+      const slot = quotaSlot;
       const isRemote = lowFrequencyNotDue || slot.isFull;
 
       if (!isRemote) {
@@ -639,10 +693,10 @@ export function generateMonthlyRoutePlan(
       }
 
       visits.push({
-        id: `${year}-${month}-${selectedWeek}-${outlet.outletId}`,
+        id: `${year}-${month}-${slot.week}-${outlet.outletId}`,
         month,
         year,
-        week: selectedWeek,
+        week: slot.week,
         dayName: slot.dayName,
         plannedDate: slot.plannedDate,
         clusterId: cluster.maCum,
