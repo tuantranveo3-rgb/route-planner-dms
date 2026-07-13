@@ -546,6 +546,7 @@ export default function PlannerPage() {
           <option value="W2">W2</option>
           <option value="W3">W3</option>
           <option value="W4">W4</option>
+          <option value="W5">W5</option>
         </select>
         <select className="h-10 rounded-md border border-line px-3 text-sm" value={sale} onChange={(event) => setSale(event.target.value)}>
           <option value="all">Tất cả sale</option>

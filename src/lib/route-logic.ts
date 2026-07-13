@@ -18,7 +18,8 @@ export const DEFAULT_SETTINGS: PlannerSettings = {
   workingDaysPerMonth: 24,
 };
 
-const weeks: WeekKey[] = ["W1", "W2", "W3", "W4"];
+const weeks: WeekKey[] = ["W1", "W2", "W3", "W4", "W5"];
+const coreWeeks: WeekKey[] = ["W1", "W2", "W3", "W4"];
 const dayIndexByName: Record<string, number> = {
   "Thứ 2": 1,
   "Thứ 3": 2,
@@ -403,6 +404,7 @@ export function generateMonthlyRoutePlan(
     for (const dayName of orderedCandidateDays) {
       const clusterKey = `${week}-${cluster.maCum}-${dayName}`;
       const plannedDate = getPlannedDate(year, month, week, dayName);
+      if (!plannedDate) continue;
       if (isSaleUnavailable(saleName, plannedDate)) continue;
       const saleDayKey = `${plannedDate}-${saleName}`;
       const clusterUsed = capacityCounter.get(clusterKey) ?? 0;
@@ -424,6 +426,7 @@ export function generateMonthlyRoutePlan(
     for (const dayName of orderedCandidateDays) {
       const clusterKey = `${week}-${cluster.maCum}-${dayName}`;
       const plannedDate = getPlannedDate(year, month, week, dayName);
+      if (!plannedDate) continue;
       if (isSaleUnavailable(saleName, plannedDate)) continue;
       const saleDayKey = `${plannedDate}-${saleName}`;
       const clusterUsed = capacityCounter.get(clusterKey) ?? 0;
@@ -445,7 +448,7 @@ export function generateMonthlyRoutePlan(
     }
 
     const dayName = preferredDayName;
-    const plannedDate = getPlannedDate(year, month, week, dayName);
+    const plannedDate = getPlannedDate(year, month, week, dayName) || toDateInputValue(new Date(year, month - 1, new Date(year, month, 0).getDate()));
     const clusterKey = `${week}-${cluster.maCum}-${dayName}`;
     const saleDayKey = `${plannedDate}-${saleName}`;
     const clusterUsed = capacityCounter.get(clusterKey) ?? 0;
@@ -664,7 +667,7 @@ function getWeeksForOutlet(
   f2CounterByCluster: Map<string, number>,
   f1CounterByCluster: Map<string, number>,
 ): WeekKey[] {
-  if (outlet.frequency === "F4") return weeks;
+  if (outlet.frequency === "F4") return coreWeeks;
   if (outlet.frequency === "F8") return ["W1", "W1", "W2", "W2", "W3", "W3", "W4", "W4"];
   if (outlet.frequency === "F2") {
     const current = f2CounterByCluster.get(outlet.cumNho) ?? 0;
@@ -674,7 +677,7 @@ function getWeeksForOutlet(
   if (outlet.frequency === "F1") {
     const current = f1CounterByCluster.get(outlet.cumNho) ?? 0;
     f1CounterByCluster.set(outlet.cumNho, current + 1);
-    return [weeks[current % weeks.length]];
+    return [coreWeeks[current % coreWeeks.length]];
   }
   if (outlet.frequency === "F0.5" || outlet.frequency === "F0.3") {
     return [weeks[stableHash(`${outlet.outletId}-${outlet.cumNho}`) % weeks.length]];
@@ -693,7 +696,7 @@ export function getPlannedDate(year: number, month: number, week: WeekKey, dayNa
     if (date.getDay() === targetDay) return toDateInputValue(date);
   }
 
-  return toDateInputValue(new Date(year, month - 1, Math.min(startDay, lastDay)));
+  return "";
 }
 
 function toDateInputValue(date: Date): string {

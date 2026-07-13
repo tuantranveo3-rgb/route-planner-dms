@@ -314,7 +314,7 @@ export default function RouteMapPage() {
   const routeDates = useMemo(() => uniqueDates(dateCandidateRows), [dateCandidateRows]);
   const dateOptions = useMemo(() => {
     const selectedWeeks = week === "all" ? weeks : [week];
-    const calendarDates = selectedWeeks.flatMap((weekKey) => workingDayNames.map((dayName) => getPlannedDate(year, month, weekKey, dayName)));
+    const calendarDates = selectedWeeks.flatMap((weekKey) => workingDayNames.map((dayName) => getPlannedDate(year, month, weekKey, dayName))).filter(Boolean);
     return Array.from(new Set([...calendarDates, ...routeDates])).sort();
   }, [month, routeDates, week, year]);
   const routeDateSet = useMemo(() => new Set(routeDates), [routeDates]);
@@ -666,6 +666,7 @@ export default function RouteMapPage() {
           <option value="W2">W2</option>
           <option value="W3">W3</option>
           <option value="W4">W4</option>
+          <option value="W5">W5</option>
         </select>
         <select className="h-10 rounded-md border border-line px-3 text-sm" value={sale} onChange={(event) => setSale(event.target.value)}>
           <option value="all">Tất cả sale</option>

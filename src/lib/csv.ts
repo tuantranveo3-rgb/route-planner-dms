@@ -307,7 +307,7 @@ export function parseExecutionHistoryCsv(csv: string): { records: RouteExecution
     const visitType = (row.visitType || "").trim() as VisitType;
     const isExtraVisit = parseBoolean(row.isExtraVisit) || (hasVisitIdColumn && !row.visitId);
 
-    if (!month || !year || !["W1", "W2", "W3", "W4"].includes(week)) {
+    if (!month || !year || !["W1", "W2", "W3", "W4", "W5"].includes(week)) {
       errors.push(`Dòng ${line}: month/year/week không hợp lệ.`);
       return [];
     }
