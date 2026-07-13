@@ -104,6 +104,11 @@ function lowFrequencyMonthlyQuota(groupSize: number, frequency: Frequency, key: 
   return Math.min(groupSize, baseQuota + (shouldUseFractionalSlot ? 1 : 0));
 }
 
+function rotateWeeks(seed: string) {
+  const offset = stableHash(seed) % weeks.length;
+  return [...weeks.slice(offset), ...weeks.slice(0, offset)];
+}
+
 function selectLowFrequencyDueOutletIds(outlets: EnrichedOutlet[], month: number, year: number) {
   const selected = new Set<string>();
   const groups = new Map<string, EnrichedOutlet[]>();
@@ -621,6 +626,38 @@ export function generateMonthlyRoutePlan(
     const lowFrequencyNotDue = isLowFrequency(outlet.frequency) && !lowFrequencyDueOutletIds.has(outlet.outletId);
     const scheduledDays = getScheduledDays(outlet, cluster);
     const targetWeeks = getWeeksForOutlet(outlet, f2CounterByCluster, f1CounterByCluster);
+
+    if (isLowFrequency(outlet.frequency)) {
+      const preferredDayName = pickPlannedDayName(scheduledDays, stableHash(outlet.outletId) + 1);
+      const candidateWeeks = lowFrequencyNotDue ? targetWeeks : rotateWeeks(`${outlet.salePhuTrach}-${outlet.frequency}-${outlet.outletId}`);
+      const selectedWeek = candidateWeeks.find((week) => !findSlot(week, cluster, outlet, preferredDayName, scheduledDays).isFull) ?? candidateWeeks[0] ?? "W4";
+      const slot = findSlot(selectedWeek, cluster, outlet, preferredDayName, scheduledDays);
+      const isRemote = lowFrequencyNotDue || slot.isFull;
+
+      if (!isRemote) {
+        reserveSlot(slot.clusterKey, slot.saleDayKey, cluster.maCum, outlet);
+      }
+
+      visits.push({
+        id: `${year}-${month}-${selectedWeek}-${outlet.outletId}`,
+        month,
+        year,
+        week: selectedWeek,
+        dayName: slot.dayName,
+        plannedDate: slot.plannedDate,
+        clusterId: cluster.maCum,
+        clusterName: cluster.tenCum,
+        routeOrder: 0,
+        outlet,
+        frequency: outlet.frequency,
+        status: isRemote ? "CS từ xa" : "Chưa đi",
+        warning: lowFrequencyNotDue
+          ? `${outlet.frequency} chưa tới chu kỳ đi trực tiếp trong tháng này; vẫn giữ trong Planner để theo dõi và ưu tiên khi quá hạn.`
+          : slot.warning,
+        priorityReason: outlet.reason,
+      });
+      continue;
+    }
 
     for (const week of targetWeeks) {
       const outletWeekKey = `${week}-${outlet.outletId}`;

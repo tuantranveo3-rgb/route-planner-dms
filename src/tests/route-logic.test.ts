@@ -556,7 +556,7 @@ describe("route logic", () => {
     const quotaClusters: RouteCluster[] = [
       { maCum: "QUOTA-A", tenCum: "Quota A", quanHuyen: "Go Vap", danhSachPhuongXa: ["A"], ngayDiCoDinh: clusters[0].ngayDiCoDinh, capacityNgay: 500, toaDoTamX: 106.68, toaDoTamY: 10.82 },
     ];
-    const settings = { ...DEFAULT_SETTINGS, defaultDailyCapacity: 500, maxVisitsPerSaleDay: 500 };
+    const settings = { ...DEFAULT_SETTINGS, defaultDailyCapacity: 500, maxVisitsPerSaleDay: 15 };
     const f03Outlets: Outlet[] = Array.from({ length: 1090 }, (_, index) => ({
       ...strongOutlet,
       outletId: `GH-F03-${index}`,
