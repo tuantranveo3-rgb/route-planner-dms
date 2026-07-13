@@ -388,7 +388,7 @@ export function generateMonthlyRoutePlan(
       const clusterUsed = capacityCounter.get(clusterKey) ?? 0;
       const saleUsed = saleDayCounter.get(saleDayKey) ?? 0;
       const clusterFitsDayRoute = canAddClusterToSaleDay(saleDayKey, cluster);
-      if (clusterUsed < capacity && saleUsed < saleMax && clusterFitsDayRoute) {
+      if (clusterUsed < capacity && saleUsed < saleMax && clusterFitsDayRoute && canAddOutletToSaleDay(saleDayKey, outlet)) {
         return {
           dayName,
           plannedDate,
