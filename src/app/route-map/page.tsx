@@ -67,6 +67,14 @@ const frequencyColors: Record<Frequency, string> = {
   "F0.3": "#71717a",
 };
 
+function isLowFrequencyWaitingCycle(visit: RouteVisit) {
+  return (
+    (visit.frequency === "F0.5" || visit.frequency === "F0.3") &&
+    visit.status.startsWith("CS") &&
+    Boolean(visit.warning?.toLowerCase().includes("chu"))
+  );
+}
+
 function loadLeaflet() {
   if (typeof window === "undefined") return Promise.reject(new Error("Leaflet chỉ chạy trên trình duyệt."));
   if (window.L) return Promise.resolve(window.L);
@@ -324,7 +332,31 @@ export default function RouteMapPage() {
     .filter((visit) => cluster === "all" || visit.clusterId === cluster)
     .filter((visit) => frequency === "all" || visit.frequency === frequency);
   const monthDirectCount = monthFilteredPlan.filter((visit) => !visit.status.startsWith("CS")).length;
-  const monthRemoteCount = monthFilteredPlan.length - monthDirectCount;
+  const monthWaitingCycleCount = monthFilteredPlan.filter(isLowFrequencyWaitingCycle).length;
+  const monthRealRemoteCount = monthFilteredPlan.filter((visit) => visit.status.startsWith("CS") && !isLowFrequencyWaitingCycle(visit)).length;
+  const visibleCountBySale = rows.reduce((map, visit) => {
+    const owner = visit.outlet.salePhuTrach;
+    map.set(owner, (map.get(owner) ?? 0) + 1);
+    return map;
+  }, new Map<string, number>());
+  const saleBreakdown = Array.from(
+    monthFilteredPlan.reduce((map, visit) => {
+      const owner = visit.outlet.salePhuTrach;
+      const current = map.get(owner) ?? { sale: owner, direct: 0, visible: 0, waitingCycle: 0, realRemote: 0 };
+      if (!visit.status.startsWith("CS")) {
+        current.direct += 1;
+      } else if (isLowFrequencyWaitingCycle(visit)) {
+        current.waitingCycle += 1;
+      } else {
+        current.realRemote += 1;
+      }
+      current.visible = visibleCountBySale.get(owner) ?? 0;
+      map.set(owner, current);
+      return map;
+    }, new Map<string, { sale: string; direct: number; visible: number; waitingCycle: number; realRemote: number }>()),
+  )
+    .map(([, value]) => value)
+    .sort((a, b) => a.sale.localeCompare(b.sale));
   const visibleClusterIds = Array.from(new Set(rows.map((visit) => visit.clusterId)));
   const isMultiClusterOverview = cluster === "all" && visibleClusterIds.length > 1;
   const isSingleSaleDay = sale !== "all" && date !== "all";
@@ -662,7 +694,7 @@ export default function RouteMapPage() {
         </select>
       </div>
 
-      <div className="mb-4 grid gap-3 md:grid-cols-3">
+      <div className="mb-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <div className="rounded-lg border border-line bg-white p-3 shadow-soft">
           <div className="text-xs font-bold uppercase text-muted">Lượt trực tiếp trong tháng</div>
           <div className="mt-1 text-2xl font-black text-ink">{monthDirectCount}</div>
@@ -674,9 +706,49 @@ export default function RouteMapPage() {
           <div className="text-xs text-muted">{date === "all" ? "Tất cả ngày đang lọc." : "Chỉ riêng ngày đang chọn."}</div>
         </div>
         <div className="rounded-lg border border-line bg-white p-3 shadow-soft">
-          <div className="text-xs font-bold uppercase text-muted">CS/từ xa hoặc chưa tới chu kỳ</div>
-          <div className="mt-1 text-2xl font-black text-ink">{monthRemoteCount}</div>
-          <div className="text-xs text-muted">Thường là F0.5/F0.3 chưa tới tháng đi hoặc quá tải thật.</div>
+          <div className="text-xs font-bold uppercase text-muted">F0.5/F0.3 chưa tới chu kỳ</div>
+          <div className="mt-1 text-2xl font-black text-ink">{monthWaitingCycleCount}</div>
+          <div className="text-xs text-muted">Không phải đi thiếu. F0.5 đi 2 tháng/lần, F0.3 đi 3 tháng/lần.</div>
+        </div>
+        <div className="rounded-lg border border-line bg-white p-3 shadow-soft">
+          <div className="text-xs font-bold uppercase text-muted">CS/quá tải thật</div>
+          <div className="mt-1 text-2xl font-black text-ink">{monthRealRemoteCount}</div>
+          <div className="text-xs text-muted">Nhóm cần xem lại capacity, ngày nghỉ hoặc phân cụm.</div>
+        </div>
+      </div>
+
+      <div className="mb-4 rounded-lg border border-line bg-white p-4 shadow-soft">
+        <div className="mb-3 flex flex-col gap-1 md:flex-row md:items-end md:justify-between">
+          <div>
+            <div className="font-bold text-ink">Tách theo từng sale</div>
+            <div className="text-sm text-muted">Các số này đã tách theo sale phụ trách, không gom nhiều sale thành một sale.</div>
+          </div>
+          <div className="text-xs font-semibold text-muted">Tổng plan đang lọc: {monthFilteredPlan.length} dòng</div>
+        </div>
+        <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+          {saleBreakdown.map((item) => (
+            <div key={item.sale} className="rounded-md border border-line bg-slate-50 p-3">
+              <div className="mb-2 font-black text-ink">{item.sale}</div>
+              <div className="grid grid-cols-4 gap-2 text-xs">
+                <div>
+                  <div className="font-bold text-ink">{item.direct}</div>
+                  <div className="text-muted">Trực tiếp</div>
+                </div>
+                <div>
+                  <div className="font-bold text-ink">{item.visible}</div>
+                  <div className="text-muted">Đang hiện</div>
+                </div>
+                <div>
+                  <div className="font-bold text-ink">{item.waitingCycle}</div>
+                  <div className="text-muted">Chưa tới chu kỳ</div>
+                </div>
+                <div>
+                  <div className="font-bold text-ink">{item.realRemote}</div>
+                  <div className="text-muted">CS/quá tải</div>
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 
