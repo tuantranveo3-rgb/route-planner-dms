@@ -63,7 +63,7 @@ npm run build
 - `F2`: 2 lần/tháng, khách tăng trưởng, chia W1-W3 hoặc W2-W4.
 - `F1`: 1 lần/tháng, khách duy trì, lấp vào tuyến cùng cụm.
 - `F0.5`: 0.5 lần/tháng, khách nhỏ/xa, khoảng 2 tháng ghé 1 lần.
-- `F0.3`: 1 lần/3 tháng, khách rất nhỏ/xa, khoảng 0.33 lần/tháng hoặc CS từ xa khi chưa tới chu kỳ.
+- `F0.3`: 0.3 lần/tháng, khách rất nhỏ/xa; mỗi tháng kéo khoảng 30% danh sách F0.3 của từng sale vào tuyến trực tiếp, phần còn lại CS/theo dõi chu kỳ.
 
 Nếu file import có cột `ghiNhanF`, app dùng F đó để lập tuyến. Nếu thiếu `ghiNhanF`, app tự tính F theo điểm.
 
@@ -94,7 +94,7 @@ Quy đổi F tự tính:
 - `F4` khóa trước ở W1, W2, W3, W4.
 - `F2` chia đều W1-W3 hoặc W2-W4.
 - `F1` rải đều trong tháng.
-- `F0.5` đi trực tiếp 1 lần/2 tháng; `F0.3` đi trực tiếp 1 lần/3 tháng. Các tháng chưa tới chu kỳ vẫn hiện CS/từ xa để theo dõi, còn điểm quá hạn/miss sẽ được ưu tiên bù.
+- `F0.5` kéo khoảng 50% danh sách/tháng; `F0.3` kéo khoảng 30% danh sách/tháng, tính riêng theo từng sale và từng F. Các điểm chưa tới quota tháng vẫn hiện CS/từ xa để theo dõi, còn điểm quá hạn/miss sẽ được ưu tiên bù.
 - `optimizeDailyRoute` sắp thứ tự trong ngày theo F, góc tuyến quanh START/tâm cụm và khoảng cách.
 
 Planner không gom tuyến theo quận lớn. Mọi tuyến phải đi theo cụm nhỏ như `Q1-A`, `BT-A`, `PN-A`.

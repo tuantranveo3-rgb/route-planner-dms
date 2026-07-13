@@ -55,7 +55,7 @@ const frequencyRules = [
   ["F2", "2 lần/tháng, chia W1-W3 hoặc W2-W4."],
   ["F1", "1 lần/tháng, lấp vào tuyến cùng cụm."],
   ["F0.5", "Khoảng 2 tháng ghé 1 lần, cần lưu lịch sử nhiều tháng để ưu tiên lại."],
-  ["F0.3", "Khoảng 3 tháng ghé 1 lần hoặc CS từ xa, cần theo dõi điểm lâu chưa ghé."],
+  ["F0.3", "0.3 lần/tháng: mỗi tháng kéo khoảng 30% danh sách F0.3 của từng sale, phần còn lại CS/theo dõi chu kỳ."],
 ];
 
 const practicalNotes = [

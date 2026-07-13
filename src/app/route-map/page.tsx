@@ -708,7 +708,7 @@ export default function RouteMapPage() {
         <div className="rounded-lg border border-line bg-white p-3 shadow-soft">
           <div className="text-xs font-bold uppercase text-muted">F0.5/F0.3 chưa tới chu kỳ</div>
           <div className="mt-1 text-2xl font-black text-ink">{monthWaitingCycleCount}</div>
-          <div className="text-xs text-muted">Không phải đi thiếu. F0.5 đi 2 tháng/lần, F0.3 đi 3 tháng/lần.</div>
+          <div className="text-xs text-muted">Không phải đi thiếu. F0.5 lấy 50%, F0.3 lấy 30% danh sách mỗi tháng.</div>
         </div>
         <div className="rounded-lg border border-line bg-white p-3 shadow-soft">
           <div className="text-xs font-bold uppercase text-muted">CS/quá tải thật</div>

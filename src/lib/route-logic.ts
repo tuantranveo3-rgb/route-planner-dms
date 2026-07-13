@@ -81,11 +81,52 @@ function stableHash(value: string) {
   return [...value].reduce((hash, char) => (hash * 31 + char.charCodeAt(0)) >>> 0, 7);
 }
 
-function shouldScheduleLowFrequencyOutlet(outlet: EnrichedOutlet, month: number, year: number) {
-  if (outlet.frequency !== "F0.5" && outlet.frequency !== "F0.3") return true;
-  const interval = outlet.frequency === "F0.5" ? 2 : 3;
+function isLowFrequency(frequency: Frequency) {
+  return frequency === "F0.5" || frequency === "F0.3";
+}
+
+function lowFrequencyMonthlyRatio(frequency: Frequency) {
+  if (frequency === "F0.5") return 0.5;
+  if (frequency === "F0.3") return 0.3;
+  return 1;
+}
+
+function lowFrequencyMonthlyQuota(groupSize: number, frequency: Frequency, key: string, month: number, year: number) {
+  const exactQuota = groupSize * lowFrequencyMonthlyRatio(frequency);
+  const baseQuota = Math.floor(exactQuota);
+  const fraction = exactQuota - baseQuota;
+  if (fraction <= 0) return baseQuota;
+
+  const interval = frequency === "F0.5" ? 2 : 3;
   const monthIndex = year * 12 + month - 1;
-  return monthIndex % interval === stableHash(outlet.outletId) % interval;
+  const shouldUseFractionalSlot = (stableHash(`${key}|fraction`) + monthIndex) % interval === 0;
+  return Math.min(groupSize, baseQuota + (shouldUseFractionalSlot ? 1 : 0));
+}
+
+function selectLowFrequencyDueOutletIds(outlets: EnrichedOutlet[], month: number, year: number) {
+  const selected = new Set<string>();
+  const groups = new Map<string, EnrichedOutlet[]>();
+
+  for (const outlet of outlets) {
+    if (!isLowFrequency(outlet.frequency)) continue;
+    const key = `${outlet.salePhuTrach}|${outlet.frequency}`;
+    groups.set(key, [...(groups.get(key) ?? []), outlet]);
+  }
+
+  for (const [key, group] of groups) {
+    const frequency = group[0]?.frequency;
+    if (!frequency) continue;
+    const quota = lowFrequencyMonthlyQuota(group.length, frequency, key, month, year);
+    const ordered = [...group].sort((a, b) => stableHash(`${key}|${a.outletId}`) - stableHash(`${key}|${b.outletId}`) || a.outletId.localeCompare(b.outletId));
+    const offset = ordered.length ? stableHash(`${key}|${year}-${month}`) % ordered.length : 0;
+    const rotated = [...ordered.slice(offset), ...ordered.slice(0, offset)];
+
+    for (const outlet of rotated.slice(0, quota)) {
+      selected.add(outlet.outletId);
+    }
+  }
+
+  return selected;
 }
 
 export function calculateSalesScore(doanhSo3Thang: number): number {
@@ -127,7 +168,7 @@ export function calculateMonthlyVisits(frequency: Frequency): number {
   if (frequency === "F2") return 2;
   if (frequency === "F1") return 1;
   if (frequency === "F0.5") return 0.5;
-  return 1 / 3;
+  return 0.3;
 }
 
 export function calculateOutletScore(outlet: Outlet, settings: PlannerSettings = DEFAULT_SETTINGS): OutletScore {
@@ -561,14 +602,20 @@ export function generateMonthlyRoutePlan(
     });
   }
 
+  const lowFrequencyDueOutletIds = selectLowFrequencyDueOutletIds(
+    sorted.filter((outlet) => isOutletAllowedByTerritory(outlet) && !lowFrequencyCarryoverOutlets.has(outlet.outletId)),
+    month,
+    year,
+  );
+
   for (const outlet of sorted) {
-    if ((outlet.frequency === "F0.5" || outlet.frequency === "F0.3") && lowFrequencyCarryoverOutlets.has(outlet.outletId)) {
+    if (isLowFrequency(outlet.frequency) && lowFrequencyCarryoverOutlets.has(outlet.outletId)) {
       continue;
     }
     const cluster = clusterById.get(outlet.cumNho);
     if (!cluster) continue;
     if (!isOutletAllowedByTerritory(outlet)) continue;
-    const lowFrequencyNotDue = (outlet.frequency === "F0.5" || outlet.frequency === "F0.3") && !shouldScheduleLowFrequencyOutlet(outlet, month, year);
+    const lowFrequencyNotDue = isLowFrequency(outlet.frequency) && !lowFrequencyDueOutletIds.has(outlet.outletId);
     const scheduledDays = getScheduledDays(outlet, cluster);
     const targetWeeks = getWeeksForOutlet(outlet, f2CounterByCluster, f1CounterByCluster);
 
