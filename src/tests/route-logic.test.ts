@@ -11,6 +11,7 @@ import {
   generateMonthlyRoutePlan,
   optimizeDailyRoute,
 } from "@/lib/route-logic";
+import type { RouteCluster } from "@/types/cluster";
 import type { Outlet } from "@/types/outlet";
 
 const strongOutlet: Outlet = {
@@ -167,6 +168,36 @@ describe("route logic", () => {
     }
 
     expect([...directClustersByDate.values()].every((clusterIds) => clusterIds.size === 1)).toBe(true);
+    expect(plan.some((visit) => visit.status.startsWith("CS") && visit.warning?.includes("quá xa"))).toBe(true);
+  });
+
+  it("keeps real-coordinate clusters apart when they are several kilometers away", () => {
+    const saleName = "Sale Real Distance";
+    const realClusters: RouteCluster[] = [
+      { maCum: "REAL-A", tenCum: "Khu A", quanHuyen: "Phú Nhuận", danhSachPhuongXa: ["A"], ngayDiCoDinh: "Thứ 2", capacityNgay: 18, toaDoTamX: 106.66, toaDoTamY: 10.8 },
+      { maCum: "REAL-B", tenCum: "Khu B", quanHuyen: "Bình Thạnh", danhSachPhuongXa: ["B"], ngayDiCoDinh: "Thứ 2", capacityNgay: 18, toaDoTamX: 106.69, toaDoTamY: 10.81 },
+    ];
+    const outlets: Outlet[] = [
+      { ...strongOutlet, outletId: "REAL-A-1", cumNho: "REAL-A", salePhuTrach: saleName, ghiNhanF: "F1", toaDoX: 106.6605, toaDoY: 10.8005 },
+      { ...strongOutlet, outletId: "REAL-B-1", cumNho: "REAL-B", salePhuTrach: saleName, ghiNhanF: "F1", toaDoX: 106.6905, toaDoY: 10.8105 },
+    ];
+    const territories = [
+      {
+        salePhuTrach: saleName,
+        khuVucPhuTrach: ["Phu Nhuan", "Binh Thanh"],
+        cumNhoPhuTrach: ["REAL-A", "REAL-B"],
+        saleBackup: "",
+        ngayDiUuTien: ["Thứ 2"],
+        lichTheoNgay: [{ dayName: "Thứ 2", clusterIds: ["REAL-A", "REAL-B"] }],
+        minVisitsPerDay: 1,
+        maxVisitsPerDay: 15,
+        ghiChu: "",
+      },
+    ];
+    const plan = generateMonthlyRoutePlan(7, 2026, outlets, realClusters, undefined, [], [], territories);
+    const directVisits = plan.filter((visit) => !visit.status.startsWith("CS"));
+
+    expect(new Set(directVisits.map((visit) => `${visit.plannedDate}-${visit.outlet.salePhuTrach}-${visit.clusterId}`)).size).toBe(1);
     expect(plan.some((visit) => visit.status.startsWith("CS") && visit.warning?.includes("quá xa"))).toBe(true);
   });
 

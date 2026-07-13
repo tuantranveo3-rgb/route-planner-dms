@@ -67,7 +67,7 @@ function routeClusterDistance(a: RouteCluster, b: RouteCluster) {
 
 function sameDayClusterThreshold(a: RouteCluster, b: RouteCluster) {
   if (looksLikeVietnamLngLat({ toaDoX: a.toaDoTamX, toaDoY: a.toaDoTamY }) && looksLikeVietnamLngLat({ toaDoX: b.toaDoTamX, toaDoY: b.toaDoTamY })) {
-    return 0.045;
+    return 0.025;
   }
   return 6;
 }

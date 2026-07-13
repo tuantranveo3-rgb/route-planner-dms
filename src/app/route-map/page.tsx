@@ -322,7 +322,7 @@ export default function RouteMapPage() {
   const isMultiClusterOverview = cluster === "all" && visibleClusterIds.length > 1;
   const isSingleSaleDay = sale !== "all" && date !== "all";
   const isOverviewMode = !isSingleSaleDay && (sale === "all" || cluster === "all");
-  const shouldDrawRouteLines = isSingleSaleDay || !isOverviewMode;
+  const shouldDrawRouteLines = !isMultiClusterOverview && (isSingleSaleDay || !isOverviewMode);
   const displayOrderByVisitId = useMemo(() => new Map(rows.map((visit, index) => [visit.id, index + 1])), [rows]);
   const dailyStartBySale = new Map(currentStartPoints.filter((point) => point.date).map((point) => [`${point.date}-${point.salePhuTrach}`, point]));
   const defaultStartBySale = new Map(currentStartPoints.filter((point) => !point.date).map((point) => [point.salePhuTrach, point]));
@@ -657,7 +657,7 @@ export default function RouteMapPage() {
           <div className="border-b border-line px-4 py-3">
             <div className="font-bold text-ink">{useStreetMap ? "OpenStreetMap tuyến bán hàng" : "Sơ đồ tuyến nội bộ"}</div>
             <div className="text-sm text-muted">{mapStatus}</div>
-            {cluster === "all" && rows.length > 0 && !isSingleSaleDay ? (
+            {isMultiClusterOverview ? (
               <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">
                 Đang xem {isMultiClusterOverview ? "nhiều cụm" : "tổng quan"} cùng lúc. App đang ẩn đường nối để tránh hiểu nhầm là một tuyến; chọn một cụm cụ thể để xem thứ tự đi trong ngày rõ nhất.
               </div>
